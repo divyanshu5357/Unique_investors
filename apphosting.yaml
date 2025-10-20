@@ -1,0 +1,29 @@
+# Settings to manage and configure a Firebase App Hosting backend.
+# https://firebase.google.com/docs/app-hosting/configure
+
+# The service account your App Hosting backend runs as.
+# The format is <service-account-name>@<project-id>.iam.gserviceaccount.com
+# If you don't specify this, App Hosting uses a default service account.
+serviceAccount: app-hosting-backend-sa
+
+# The roles necessary for the service account to deploy and run your app.
+# By default, App Hosting grants the "App Hosting Runner" and "Secret Manager Secret Accessor" roles.
+# You can add more roles here if your app needs them.
+iam:
+  roles:
+    # Allows the service account to access secrets in Secret Manager.
+    - type: secretmanager.secretAccessor
+      # You can grant access to all secrets or specify individual secrets.
+      # Using a wildcard is convenient if you add more secrets later.
+      secrets: ["SUPABASE_SERVICE_ROLE_KEY", "FIREBASE_CREDENTIALS"]
+
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+  concurrency: 80
+  minInstances: 0
+secretEnvironmentVariables:
+  - key: SUPABASE_SERVICE_ROLE_KEY
+    secret: SUPABASE_SERVICE_ROLE_KEY
+  - key: FIREBASE_CREDENTIALS
+    secret: FIREBASE_CREDENTIALS

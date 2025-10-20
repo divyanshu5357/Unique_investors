@@ -1,0 +1,1279 @@
+
+
+'use server'
+
+import { adminDb } from '@/lib/firebase/admin';
+import type { PlotFormValues } from '@/components/inventory/PlotForm';
+import { Plot, PlotSchema, Wallet, Transaction, WithdrawalRequest } from './schema';
+import { revalidatePath } from 'next/cache';
+import * as admin from 'firebase-admin';
+import { z } from 'zod';
+import { 
+    getSupabaseAdminClient, 
+    getAuthenticatedUser, 
+    authorizeAdmin,
+    buildDownlineTree,
+    BrokerFormSchema,
+    manageWalletSchema,
+    BulkAddPlotsData
+} from './serverUtils';
+import { Broker, DownlineTreeData, TransactionRecord, WithdrawalRequestRecord, BrokerVerificationRecord } from './types';
+import { withdrawalRequestSchema, processWithdrawalSchema, brokerVerificationSubmissionSchema, processVerificationSchema, brokerReferralSubmissionSchema, processReferralSchema } from './schema';
+
+export async function ensureUserProfile(userId: string, userMetadata?: any) {
+    const supabaseAdmin = await getSupabaseAdminClient();
+    
+    // Check if profile already exists
+    const { data: existingProfile, error: checkError } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('id', userId)
+        .single();
+    
+    // If profile exists, return it
+    if (existingProfile && !checkError) {
+        return existingProfile;
+    }
+    
+    // If profile doesn't exist, create it
+    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (authError || !authUser) {
+        throw new Error('User not found in authentication system');
+    }
+    
+    const profileData = {
+        id: userId,
+        full_name: userMetadata?.full_name || authUser.user.user_metadata?.full_name || authUser.user.email?.split('@')[0] || null,
+        avatar_url: userMetadata?.avatar_url || authUser.user.user_metadata?.avatar_url || null,
+        role: userMetadata?.role || authUser.user.user_metadata?.role || 'investor'
+    };
+    
+    const { data: newProfile, error: createError } = await supabaseAdmin
+        .from('profiles')
+        .insert(profileData)
+        .select()
+        .single();
+    
+    if (createError) {
+        throw new Error(`Failed to create user profile: ${createError.message}`);
+    }
+    
+    return newProfile;
+}
+
+export async function addPlot(data: PlotFormValues) {
+    await authorizeAdmin();
+
+    const plotNumber = Number(data.plotNumber);
+    if (isNaN(plotNumber)) {
+        throw new Error('Invalid plot number provided.');
+    }
+
+    const plotsRef = adminDb.collection("plots");
+    const q = plotsRef
+        .where("projectName", "==", data.projectName)
+        .where("type", "==", data.type)
+        .where("block", "==", data.block)
+        .where("plotNumber", "==", plotNumber);
+
+    const querySnapshot = await q.get();
+    if (!querySnapshot.empty) {
+        throw new Error(`Plot #${data.plotNumber} already exists in ${data.projectName}, Block ${data.block}.`);
+    }
+
+    try {
+        const plotData: any = {
+            ...data,
+            plotNumber: plotNumber,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        // If plot is being created as sold, process commission immediately
+        if (data.status === 'sold' && data.brokerId && data.salePrice && data.commissionRate) {
+            plotData.updatedBy = data.brokerId;
+            await plotsRef.add(plotData);
+            
+            // Calculate and distribute commission
+            await processCommissionCalculation(data.brokerId, data.salePrice, data);
+        } else {
+            await plotsRef.add(plotData);
+        }
+        
+        revalidatePath('/admin/inventory');
+        revalidatePath('/broker/inventory');
+        revalidatePath('/investor/dashboard');
+        revalidatePath('/admin/commissions');
+    } catch (error) {
+        console.error("Error adding plot:", error);
+        throw new Error("Failed to add plot due to a server error.");
+    }
+}
+
+export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
+    await authorizeAdmin();
+    const plotRef = adminDb.collection('plots').doc(id);
+
+    try {
+        const plotDoc = await plotRef.get();
+        if (!plotDoc.exists) {
+            throw new Error("Plot not found.");
+        }
+        const originalPlot = plotDoc.data() as Plot;
+
+        const isNowSold = data.status === 'sold' && originalPlot.status !== 'sold';
+        
+        // Update the plot data
+        const updateData: any = {
+            ...data,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        if (isNowSold && data.brokerId && data.salePrice && data.commissionRate) {
+            updateData.updatedBy = data.brokerId;
+        }
+
+        await plotRef.update(updateData);
+
+        // Process commission calculation if plot is being marked as sold
+        if (isNowSold && data.brokerId && data.salePrice && data.commissionRate) {
+            await processCommissionCalculation(data.brokerId, data.salePrice, {
+                ...originalPlot,
+                ...data
+            });
+        }
+
+        revalidatePath('/admin/inventory');
+        revalidatePath('/broker/inventory');
+        revalidatePath('/investor/dashboard');
+        revalidatePath('/admin/commissions');
+    } catch (error) {
+        console.error("Error updating plot:", error);
+        throw new Error("Failed to update plot due to a server error.");
+    }
+}
+
+export async function deletePlot(id: string) {
+    await authorizeAdmin();
+    try {
+        await adminDb.collection('plots').doc(id).delete();
+        revalidatePath('/admin/inventory');
+        revalidatePath('/broker/inventory');
+        revalidatePath('/investor/dashboard');
+    } catch (error) {
+        console.error("Error deleting plot: ", error);
+        throw new Error("Could not delete the plot.");
+    }
+}
+
+export async function bulkAddPlots(data: BulkAddPlotsData) {
+    await authorizeAdmin();
+
+    const plotsRef = adminDb.collection("plots");
+    const q = plotsRef
+        .where("projectName", "==", data.projectName)
+        .where("type", "==", data.type)
+        .where("block", "==", data.block);
+
+    const countSnapshot = await q.count().get();
+    if (countSnapshot.data().count > 0) {
+        throw new Error(`Plots already exist for ${data.projectName}, ${data.type}, Block ${data.block}.`);
+    }
+
+    const batch = adminDb.batch();
+
+    for (let i = 1; i <= data.totalPlots; i++) {
+        const newPlotRef = plotsRef.doc();
+        const plotData = {
+            projectName: data.projectName,
+            type: data.type,
+            block: data.block,
+            plotNumber: i,
+            dimension: data.dimension,
+            area: data.area,
+            status: 'available' as const,
+            buyerName: null,
+            salePrice: null,
+            commissionRate: null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy: null,
+        };
+
+        const parseResult = PlotSchema.omit({id: true}).safeParse(plotData);
+        if (!parseResult.success) {
+            console.error("Invalid plot data during bulk add:", parseResult.error);
+            throw new Error("Invalid plot data generated. Please check your inputs.");
+        }
+
+        batch.set(newPlotRef, parseResult.data);
+    }
+
+    try {
+        await batch.commit();
+        revalidatePath('/admin/inventory');
+        revalidatePath('/broker/inventory');
+        revalidatePath('/investor/dashboard');
+        return { success: true, count: data.totalPlots };
+    } catch (error) {
+        console.error("Error committing bulk add batch:", error);
+        throw new Error("Failed to generate plots due to a database error.");
+    }
+}
+
+export async function createBroker(values: z.infer<typeof BrokerFormSchema>) {
+    await authorizeAdmin();
+    const supabaseAdmin = await getSupabaseAdminClient();
+
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: values.email,
+        password: values.password,
+        email_confirm: true,
+        user_metadata: {
+            full_name: values.fullName,
+            role: 'broker',
+        }
+    });
+
+    if (authError) {
+        console.error("Supabase create user failed:", authError);
+        throw new Error(`Could not create broker user: ${authError.message}`);
+    }
+
+    if (!authData.user) {
+        throw new Error('Could not create broker user.');
+    }
+
+    const { error: updateUserError } = await supabaseAdmin.auth.admin.updateUserById(
+        authData.user.id,
+        { email_confirm: true }
+    );
+
+    if (updateUserError) {
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        throw new Error(`Could not confirm broker's email: ${updateUserError.message}. The operation has been rolled back.`);
+    }
+
+    // Create profile record for the new broker
+    const profileData = {
+        id: authData.user.id,
+        email: values.email,
+        name: values.fullName,
+        full_name: values.fullName,
+        role: 'broker',
+        status: 'approved',
+        commission: 0,
+        totalsales: 0,
+        joinedat: new Date().toISOString(),
+        updatedat: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sponsorid: values.uplineId || null,
+        referred_by: values.uplineId || null,
+    };
+
+    const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .insert(profileData);
+
+    if (profileError) {
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        throw new Error(`User created but failed to create profile: ${profileError.message}. The operation has been rolled back.`);
+    }
+    
+    // Create wallet in Firebase
+    await adminDb.collection('wallets').doc(authData.user.id).set({
+        ownerId: authData.user.id,
+        directSaleBalance: 0,
+        downlineSaleBalance: 0,
+        totalBalance: 0
+    });
+
+    revalidatePath('/admin/brokers');
+    return { success: true };
+}
+
+export async function getBrokers(): Promise<Broker[]> {
+    await authorizeAdmin();
+    const supabaseAdmin = await getSupabaseAdminClient();
+
+    const { data: profiles, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, full_name')
+        .eq('role', 'broker');
+
+    if (profileError) throw new Error(`Failed to fetch profiles: ${profileError.message}`);
+    if (!profiles) return [];
+
+    const userIds = profiles.map(p => p.id);
+    const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    if (usersError) throw new Error(`Failed to fetch auth users: ${usersError.message}`);
+    
+    const walletsSnapshot = await adminDb.collection('wallets').where('ownerId', 'in', userIds.length > 0 ? userIds : ['dummy-id-to-prevent-error']).get();
+    const walletsMap = new Map(walletsSnapshot.docs.map(doc => [doc.id, doc.data() as Wallet]));
+
+    const brokerUsers = usersData.users.filter(u => userIds.includes(u.id));
+
+    const combinedData: Broker[] = profiles.map(profile => {
+        const authUser = brokerUsers.find(u => u.id === profile.id);
+        const wallet = walletsMap.get(profile.id);
+        return {
+            id: profile.id,
+            full_name: profile.full_name,
+            email: authUser?.email,
+            created_at: authUser?.created_at || '',
+            soldPlots: [],
+            directSaleBalance: wallet?.directSaleBalance ?? 0,
+            downlineSaleBalance: wallet?.downlineSaleBalance ?? 0,
+            totalBalance: wallet?.totalBalance ?? 0,
+        };
+    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const brokersWithPlots = await Promise.all(combinedData.map(async (broker) => {
+        const plotsSnapshot = await adminDb.collection('plots')
+            .where('status', '==', 'sold')
+            .where('updatedBy', '==', broker.id)
+            .get();
+
+        // Convert Firestore data to plain objects for serialization
+        const soldPlots = plotsSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                projectName: data.projectName,
+                plotNumber: data.plotNumber,
+                buyerName: data.buyerName,
+                salePrice: data.salePrice,
+                status: data.status,
+                // Convert Firestore timestamps to ISO strings
+                createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+                updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+            };
+        });
+        
+        return { ...broker, soldPlots };
+    }));
+
+    return brokersWithPlots;
+}
+
+export async function deleteBroker(userId: string) {
+    await authorizeAdmin();
+    const supabaseAdmin = await getSupabaseAdminClient();
+    
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (authError) { 
+        throw new Error(`Failed to delete broker from authentication: ${authError.message}`);
+    }
+    
+    await adminDb.collection('wallets').doc(userId).delete();
+    revalidatePath('/admin/brokers');
+    return { success: true };
+}
+
+export async function getDownlineTreeForBroker(brokerId: string): Promise<DownlineTreeData | null> {
+    await authorizeAdmin(); 
+    return buildDownlineTree(brokerId);
+}
+
+export async function getMyDownlineTree(): Promise<DownlineTreeData | null> {
+    const { user } = await getAuthenticatedUser('broker');
+    return buildDownlineTree(user.id);
+}
+
+export async function getBrokerWallets(): Promise<Wallet | null> {
+    const { user } = await getAuthenticatedUser('broker');
+    const walletRef = adminDb.collection('wallets').doc(user.id);
+    const doc = await walletRef.get();
+
+    if (!doc.exists) {
+        console.log(`No wallet found for broker ${user.id}, creating one.`);
+        const newWallet: Wallet = {
+            id: user.id,
+            ownerId: user.id,
+            directSaleBalance: 0,
+            downlineSaleBalance: 0,
+            totalBalance: 0,
+        };
+        await walletRef.set(newWallet);
+        return newWallet;
+    }
+
+    return Wallet.parse({ id: doc.id, ...doc.data() });
+}
+
+export async function getTransactions(walletId: string): Promise<Transaction[]> {
+    await getAuthenticatedUser('broker');
+    const transactionsRef = adminDb.collection('transactions');
+    const q = transactionsRef.where('walletId', '==', walletId).orderBy('date', 'desc');
+    const snapshot = await q.get();
+
+    if (snapshot.empty) return [];
+    
+    // Convert Firestore data to plain objects for serialization
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            walletId: data.walletId,
+            walletType: data.walletType,
+            type: data.type,
+            amount: data.amount,
+            description: data.description,
+            paymentMode: data.paymentMode || null,
+            transactionId: data.transactionId || null,
+            proofUrl: data.proofUrl || null,
+            // Convert Firestore timestamp to ISO string
+            date: data.date?.toDate?.()?.toISOString() || data.date,
+        };
+    });
+}
+
+export async function requestWithdrawal(values: z.infer<typeof withdrawalRequestSchema>) {
+    const { user } = await getAuthenticatedUser('broker');
+    
+    const wallet = await getBrokerWallets();
+    if (!wallet || wallet.totalBalance < values.amount) {
+        throw new Error("Insufficient balance for this withdrawal request.");
+    }
+
+    // Get broker profile info
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', user.id)
+        .single();
+
+    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(user.id);
+    
+    await adminDb.collection('withdrawal_requests').add({
+        brokerId: user.id,
+        brokerName: profile?.full_name || 'Unknown',
+        brokerEmail: authUser?.user?.email || 'Unknown',
+        amount: values.amount,
+        status: 'pending',
+        requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+        note: values.note || null,
+        paymentType: null,
+        proofImageUrl: null,
+        processedBy: null,
+        processedAt: null,
+        rejectionReason: null,
+    });
+
+    revalidatePath('/broker/transactions');
+    revalidatePath('/admin/transactions');
+}
+
+export async function getBrokerTransactions(brokerId?: string): Promise<TransactionRecord[]> {
+    let user;
+    try {
+        const result = await getAuthenticatedUser('broker');
+        user = result.user;
+    } catch {
+        const result = await getAuthenticatedUser('admin');
+        user = result.user;
+    }
+    
+    const targetBrokerId = brokerId || user.id;
+    
+    // If not admin and trying to access another broker's data, deny
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+        
+    if (profile?.role !== 'admin' && targetBrokerId !== user.id) {
+        throw new Error("Unauthorized to access this data");
+    }
+
+    const transactionsRef = adminDb.collection('transactions');
+    const q = transactionsRef.where('walletId', '==', targetBrokerId).orderBy('date', 'desc');
+    const snapshot = await q.get();
+
+    if (snapshot.empty) return [];
+    
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            walletId: data.walletId,
+            walletType: data.walletType,
+            type: data.type,
+            amount: data.amount,
+            description: data.description,
+            paymentMode: data.paymentMode || null,
+            transactionId: data.transactionId || null,
+            proofUrl: data.proofUrl || null,
+            status: data.status || 'completed',
+            note: data.note || null,
+            processedBy: data.processedBy || null,
+            date: data.date?.toDate?.()?.toISOString() || data.date,
+            processedAt: data.processedAt?.toDate?.()?.toISOString() || data.processedAt,
+        };
+    });
+}
+
+export async function getBrokerWithdrawalRequests(brokerId?: string): Promise<WithdrawalRequestRecord[]> {
+    let user;
+    try {
+        const result = await getAuthenticatedUser('broker');
+        user = result.user;
+    } catch {
+        const result = await getAuthenticatedUser('admin');
+        user = result.user;
+    }
+    
+    const targetBrokerId = brokerId || user.id;
+    
+    // If not admin and trying to access another broker's data, deny
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+        
+    if (profile?.role !== 'admin' && targetBrokerId !== user.id) {
+        throw new Error("Unauthorized to access this data");
+    }
+
+    const withdrawalsRef = adminDb.collection('withdrawal_requests');
+    const q = withdrawalsRef.where('brokerId', '==', targetBrokerId).orderBy('requestedAt', 'desc');
+    const snapshot = await q.get();
+
+    if (snapshot.empty) return [];
+    
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            brokerId: data.brokerId,
+            brokerName: data.brokerName,
+            brokerEmail: data.brokerEmail,
+            amount: data.amount,
+            status: data.status,
+            note: data.note || null,
+            paymentType: data.paymentType || null,
+            proofImageUrl: data.proofImageUrl || null,
+            processedBy: data.processedBy || null,
+            rejectionReason: data.rejectionReason || null,
+            requestedAt: data.requestedAt?.toDate?.()?.toISOString() || data.requestedAt,
+            processedAt: data.processedAt?.toDate?.()?.toISOString() || data.processedAt,
+        };
+    });
+}
+
+export async function getAllWithdrawalRequests(): Promise<WithdrawalRequestRecord[]> {
+    await authorizeAdmin();
+    
+    const withdrawalsRef = adminDb.collection('withdrawal_requests');
+    const q = withdrawalsRef.orderBy('requestedAt', 'desc');
+    const snapshot = await q.get();
+
+    if (snapshot.empty) return [];
+    
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            brokerId: data.brokerId,
+            brokerName: data.brokerName,
+            brokerEmail: data.brokerEmail,
+            amount: data.amount,
+            status: data.status,
+            note: data.note || null,
+            paymentType: data.paymentType || null,
+            proofImageUrl: data.proofImageUrl || null,
+            processedBy: data.processedBy || null,
+            rejectionReason: data.rejectionReason || null,
+            requestedAt: data.requestedAt?.toDate?.()?.toISOString() || data.requestedAt,
+            processedAt: data.processedAt?.toDate?.()?.toISOString() || data.processedAt,
+        };
+    });
+}
+
+export async function processWithdrawalRequest(values: z.infer<typeof processWithdrawalSchema>) {
+    const { user } = await getAuthenticatedUser('admin');
+    const { requestId, action, paymentType, proofImageUrl, rejectionReason } = values;
+
+    const withdrawalRef = adminDb.collection('withdrawal_requests').doc(requestId);
+    const withdrawalDoc = await withdrawalRef.get();
+    
+    if (!withdrawalDoc.exists) {
+        throw new Error("Withdrawal request not found");
+    }
+
+    const withdrawalData = withdrawalDoc.data();
+    if (withdrawalData?.status !== 'pending') {
+        throw new Error("This withdrawal request has already been processed");
+    }
+
+    const updateData: any = {
+        status: action === 'approve' ? 'approved' : 'rejected',
+        processedBy: user.id,
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (action === 'approve') {
+        if (!paymentType) {
+            throw new Error("Payment type is required for approval");
+        }
+        updateData.paymentType = paymentType;
+        updateData.proofImageUrl = proofImageUrl || null;
+
+        // Deduct amount from broker's wallet
+        const walletRef = adminDb.collection('wallets').doc(withdrawalData.brokerId);
+        const batch = adminDb.batch();
+        
+        batch.update(walletRef, {
+            totalBalance: admin.firestore.FieldValue.increment(-withdrawalData.amount)
+        });
+
+        // Add withdrawal transaction record
+        const transactionRef = adminDb.collection('transactions').doc();
+        batch.set(transactionRef, {
+            walletId: withdrawalData.brokerId,
+            walletType: 'direct',
+            type: 'withdrawal',
+            amount: withdrawalData.amount,
+            date: admin.firestore.FieldValue.serverTimestamp(),
+            description: `Withdrawal approved - ${paymentType}`,
+            paymentMode: paymentType,
+            status: 'approved',
+            note: withdrawalData.note || null,
+            processedBy: user.id,
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+            proofUrl: proofImageUrl || null,
+        });
+
+        batch.update(withdrawalRef, updateData);
+        await batch.commit();
+    } else {
+        if (!rejectionReason) {
+            throw new Error("Rejection reason is required");
+        }
+        updateData.rejectionReason = rejectionReason;
+        await withdrawalRef.update(updateData);
+    }
+
+    revalidatePath('/admin/transactions');
+    revalidatePath('/broker/transactions');
+}
+
+// Broker Verification Actions
+export async function submitBrokerVerification(values: z.infer<typeof brokerVerificationSubmissionSchema>) {
+    const { user } = await getAuthenticatedUser('broker');
+    
+    // Check if broker already has a pending or approved verification
+    const existingVerificationSnapshot = await adminDb.collection('broker_verifications')
+        .where('brokerId', '==', user.id)
+        .where('status', 'in', ['pending', 'approved'])
+        .get();
+    
+    if (!existingVerificationSnapshot.empty) {
+        throw new Error("You already have a pending or approved verification request.");
+    }
+
+    // Get broker profile info
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', user.id)
+        .single();
+
+    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(user.id);
+    
+    await adminDb.collection('broker_verifications').add({
+        brokerId: user.id,
+        brokerName: profile?.full_name || 'Unknown',
+        brokerEmail: authUser?.user?.email || 'Unknown',
+        fullName: values.fullName,
+        idType: values.idType,
+        idNumber: values.idNumber,
+        idImageUrl: values.idImageUrl,
+        status: 'pending',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        processedAt: null,
+        processedBy: null,
+        rejectionReason: null,
+    });
+
+    revalidatePath('/broker/verification');
+    revalidatePath('/admin/verifications');
+}
+
+export async function getBrokerVerificationStatus(brokerId?: string): Promise<BrokerVerificationRecord | null> {
+    let user;
+    try {
+        const result = await getAuthenticatedUser('broker');
+        user = result.user;
+    } catch {
+        const result = await getAuthenticatedUser('admin');
+        user = result.user;
+    }
+    
+    const targetBrokerId = brokerId || user.id;
+    
+    // If not admin and trying to access another broker's data, deny
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+        
+    if (profile?.role !== 'admin' && targetBrokerId !== user.id) {
+        throw new Error("Unauthorized to access this data");
+    }
+
+    const verificationsRef = adminDb.collection('broker_verifications');
+    const q = verificationsRef.where('brokerId', '==', targetBrokerId).orderBy('createdAt', 'desc').limit(1);
+    const snapshot = await q.get();
+
+    if (snapshot.empty) return null;
+    
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    
+    return {
+        id: doc.id,
+        brokerId: data.brokerId,
+        brokerName: data.brokerName,
+        brokerEmail: data.brokerEmail,
+        fullName: data.fullName,
+        idType: data.idType,
+        idNumber: data.idNumber,
+        idImageUrl: data.idImageUrl,
+        status: data.status,
+        rejectionReason: data.rejectionReason || null,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        processedAt: data.processedAt?.toDate?.()?.toISOString() || data.processedAt,
+        processedBy: data.processedBy || null,
+    };
+}
+
+export async function getAllBrokerVerifications(): Promise<BrokerVerificationRecord[]> {
+    await authorizeAdmin();
+    
+    const verificationsRef = adminDb.collection('broker_verifications');
+    const q = verificationsRef.orderBy('createdAt', 'desc');
+    const snapshot = await q.get();
+
+    if (snapshot.empty) return [];
+    
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            brokerId: data.brokerId,
+            brokerName: data.brokerName,
+            brokerEmail: data.brokerEmail,
+            fullName: data.fullName,
+            idType: data.idType,
+            idNumber: data.idNumber,
+            idImageUrl: data.idImageUrl,
+            status: data.status,
+            rejectionReason: data.rejectionReason || null,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            processedAt: data.processedAt?.toDate?.()?.toISOString() || data.processedAt,
+            processedBy: data.processedBy || null,
+        };
+    });
+}
+
+export async function processVerificationRequest(values: z.infer<typeof processVerificationSchema>) {
+    const { user } = await getAuthenticatedUser('admin');
+    const { verificationId, action, rejectionReason } = values;
+
+    const verificationRef = adminDb.collection('broker_verifications').doc(verificationId);
+    const verificationDoc = await verificationRef.get();
+    
+    if (!verificationDoc.exists) {
+        throw new Error("Verification request not found");
+    }
+
+    const verificationData = verificationDoc.data();
+    if (verificationData?.status !== 'pending') {
+        throw new Error("This verification request has already been processed");
+    }
+
+    const updateData: any = {
+        status: action === 'approve' ? 'approved' : 'rejected',
+        processedBy: user.id,
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (action === 'reject') {
+        if (!rejectionReason) {
+            throw new Error("Rejection reason is required");
+        }
+        updateData.rejectionReason = rejectionReason;
+    }
+
+    await verificationRef.update(updateData);
+
+    revalidatePath('/admin/verifications');
+    revalidatePath('/broker/verification');
+}
+
+export async function manageBrokerWallet(values: z.infer<typeof manageWalletSchema>) {
+    await authorizeAdmin();
+    const { brokerId, type, amount, walletType, description, paymentMode, transactionId } = values;
+
+    const walletRef = adminDb.collection('wallets').doc(brokerId);
+    const transactionRef = adminDb.collection('transactions').doc();
+    const batch = adminDb.batch();
+
+    const increment = type === 'credit' ? amount : -amount;
+    const updatePayload = {
+        [`${walletType}SaleBalance`]: admin.firestore.FieldValue.increment(increment),
+        totalBalance: admin.firestore.FieldValue.increment(increment),
+    };
+    
+    // Use set with merge to create the doc if it doesn't exist, or update it if it does.
+    batch.set(walletRef, updatePayload, { merge: true });
+    
+    const transactionData: Omit<Transaction, 'id' | 'date'> & { date: admin.firestore.FieldValue } = {
+        walletId: brokerId,
+        walletType,
+        type,
+        amount,
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        description,
+        paymentMode: paymentMode || null,
+        transactionId: transactionId || null,
+        proofUrl: null, // Admin can add this later if needed
+    };
+    batch.set(transactionRef, transactionData);
+
+    try {
+        await batch.commit();
+        revalidatePath('/admin/brokers');
+        revalidatePath('/broker/dashboard');
+        revalidatePath('/broker/wallets');
+    } catch (error) {
+        console.error("Error managing wallet:", error);
+        throw new Error("Failed to process wallet transaction.");
+    }
+}
+
+// Commission update schema
+const CommissionUpdateSchema = z.object({
+    plotId: z.string().min(1, "Plot ID is required"),
+    commissionRate: z.number().min(0).max(100, "Commission rate must be between 0 and 100"),
+    salePrice: z.number().min(0, "Sale price must be non-negative"),
+});
+
+export async function updateCommission(plotId: string, commissionRate: number, salePrice: number) {
+    try {
+        // Validate input
+        const validatedData = CommissionUpdateSchema.parse({
+            plotId,
+            commissionRate,
+            salePrice
+        });
+
+        // Authorize admin access
+        await authorizeAdmin();
+
+        // Update the plot in Firebase
+        const plotRef = adminDb.collection('plots').doc(validatedData.plotId);
+        
+        // Get current plot data
+        const plotDoc = await plotRef.get();
+        if (!plotDoc.exists) {
+            throw new Error('Plot not found');
+        }
+
+        // Update the commission rate and sale price
+        await plotRef.update({
+            commissionRate: validatedData.commissionRate,
+            salePrice: validatedData.salePrice,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Revalidate the admin commissions page
+        revalidatePath('/admin/commissions');
+        
+        return { 
+            success: true, 
+            message: 'Commission updated successfully',
+            newCommissionAmount: (validatedData.salePrice * validatedData.commissionRate) / 100
+        };
+
+    } catch (error) {
+        console.error("Error updating commission:", error);
+        if (error instanceof z.ZodError) {
+            throw new Error(`Validation error: ${error.errors.map(e => e.message).join(', ')}`);
+        }
+        throw new Error("Failed to update commission");
+    }
+}
+
+// ========== BROKER REFERRAL ACTIONS ==========
+
+export async function submitBrokerReferral(formData: {
+    referredName: string;
+    referredEmail: string;
+    referredPhone: string;
+    note?: string;
+}) {
+    const user = await getAuthenticatedUser();
+    
+    // Validate form data
+    const validatedData = brokerReferralSubmissionSchema.parse(formData);
+    
+    try {
+        // Check if email is already registered
+        const supabaseAdmin = await getSupabaseAdminClient();
+        const { data: existingUser } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('email', validatedData.referredEmail)
+            .single();
+            
+        if (existingUser) {
+            throw new Error('This email is already registered in the system');
+        }
+        
+        // Check if there's already a pending referral for this email
+        const referralsRef = adminDb.collection('brokerReferrals');
+        const existingReferral = await referralsRef
+            .where('referredEmail', '==', validatedData.referredEmail)
+            .where('status', '==', 'pending')
+            .get();
+            
+        if (!existingReferral.empty) {
+            throw new Error('A pending referral for this email already exists');
+        }
+        
+        // Get referrer details
+        const { data: referrerProfile } = await supabaseAdmin
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', user.user.id)
+            .single();
+            
+        if (!referrerProfile) {
+            throw new Error('Referrer profile not found');
+        }
+        
+        // Create referral record
+        const referralData = {
+            referrerId: user.user.id,
+            referrerName: referrerProfile.full_name || 'Unknown',
+            referrerEmail: referrerProfile.email || '',
+            referredName: validatedData.referredName,
+            referredEmail: validatedData.referredEmail,
+            referredPhone: validatedData.referredPhone,
+            note: validatedData.note || null,
+            status: 'pending',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        
+        await referralsRef.add(referralData);
+        
+        revalidatePath('/broker/referral');
+        
+        return { 
+            success: true, 
+            message: 'Referral submitted successfully! Admin will review and approve.' 
+        };
+        
+    } catch (error) {
+        console.error('Error submitting referral:', error);
+        if (error instanceof z.ZodError) {
+            throw new Error(`Validation error: ${error.errors.map(e => e.message).join(', ')}`);
+        }
+        throw new Error(error instanceof Error ? error.message : 'Failed to submit referral');
+    }
+}
+
+export async function getBrokerReferrals(brokerId?: string) {
+    const user = await getAuthenticatedUser();
+    
+    try {
+        const referralsRef = adminDb.collection('brokerReferrals');
+        let query = referralsRef.orderBy('createdAt', 'desc');
+        
+        // If brokerId is provided (for broker's own referrals), filter by it
+        if (brokerId) {
+            query = query.where('referrerId', '==', brokerId);
+        }
+        
+        const snapshot = await query.get();
+        
+        const referrals = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate()?.toISOString() || '',
+            processedAt: doc.data().processedAt?.toDate()?.toISOString() || null,
+        }));
+        
+        return referrals;
+        
+    } catch (error) {
+        console.error('Error fetching referrals:', error);
+        throw new Error('Failed to fetch referrals');
+    }
+}
+
+export async function processReferralRequest(formData: {
+    referralId: string;
+    action: 'approve' | 'reject';
+    rejectionReason?: string;
+    username?: string;
+    password?: string;
+    role?: 'broker';
+}) {
+    await authorizeAdmin();
+    
+    const validatedData = processReferralSchema.parse(formData);
+    
+    try {
+        const referralRef = adminDb.collection('brokerReferrals').doc(validatedData.referralId);
+        const referralDoc = await referralRef.get();
+        
+        if (!referralDoc.exists) {
+            throw new Error('Referral not found');
+        }
+        
+        const referralData = referralDoc.data();
+        if (referralData?.status !== 'pending') {
+            throw new Error('Referral has already been processed');
+        }
+        
+        if (validatedData.action === 'approve') {
+            if (!validatedData.username || !validatedData.password) {
+                throw new Error('Username and password are required for approval');
+            }
+            
+            // Create new broker account in Supabase
+            const supabaseAdmin = await getSupabaseAdminClient();
+            
+            // Create auth user
+            const { data: newUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+                email: referralData?.referredEmail,
+                password: validatedData.password,
+                email_confirm: true,
+                user_metadata: {
+                    full_name: referralData?.referredName,
+                    role: 'broker',
+                    phone: referralData?.referredPhone,
+                }
+            });
+            
+            if (authError || !newUser) {
+                throw new Error(`Failed to create user account: ${authError?.message}`);
+            }
+            
+            // Create profile
+            const { error: profileError } = await supabaseAdmin
+                .from('profiles')
+                .insert({
+                    id: newUser.user.id,
+                    full_name: referralData?.referredName,
+                    email: referralData?.referredEmail,
+                    role: 'broker',
+                    phone: referralData?.referredPhone,
+                    uplineId: referralData?.referrerId, // Set the referrer as upline
+                });
+                
+            if (profileError) {
+                // Cleanup: delete the auth user if profile creation fails
+                await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+                throw new Error(`Failed to create user profile: ${profileError.message}`);
+            }
+            
+            // Create wallet for new broker
+            const walletData = {
+                ownerId: newUser.user.id,
+                directSaleBalance: 0,
+                downlineSaleBalance: 0,
+                totalBalance: 0,
+            };
+            
+            await adminDb.collection('wallets').doc(newUser.user.id).set(walletData);
+            
+            // Update referral with approval details
+            await referralRef.update({
+                status: 'approved',
+                processedAt: admin.firestore.FieldValue.serverTimestamp(),
+                processedBy: (await getAuthenticatedUser()).user.id,
+                newBrokerId: newUser.user.id,
+            });
+            
+            revalidatePath('/admin/referrals');
+            return { 
+                success: true, 
+                message: `Referral approved! New broker account created for ${referralData?.referredName}` 
+            };
+            
+        } else {
+            // Reject referral
+            await referralRef.update({
+                status: 'rejected',
+                processedAt: admin.firestore.FieldValue.serverTimestamp(),
+                processedBy: (await getAuthenticatedUser()).user.id,
+                rejectionReason: validatedData.rejectionReason || 'No reason provided',
+            });
+            
+            revalidatePath('/admin/referrals');
+            return { 
+                success: true, 
+                message: 'Referral rejected successfully' 
+            };
+        }
+        
+    } catch (error) {
+        console.error('Error processing referral:', error);
+        if (error instanceof z.ZodError) {
+            throw new Error(`Validation error: ${error.errors.map(e => e.message).join(', ')}`);
+        }
+        throw new Error(error instanceof Error ? error.message : 'Failed to process referral');
+    }
+}
+
+// ========== COMMISSION DISTRIBUTION ACTIONS ==========
+
+export async function processCommissionCalculation(sellerId: string, saleAmount: number, plotData?: any) {
+    try {
+        const supabaseAdmin = await getSupabaseAdminClient();
+        
+        // Get seller profile
+        const { data: sellerProfile } = await supabaseAdmin
+            .from('profiles')
+            .select('full_name, uplineId')
+            .eq('id', sellerId)
+            .single();
+            
+        if (!sellerProfile) {
+            throw new Error('Seller profile not found');
+        }
+        
+        const commissions = [];
+        let currentUplineId = sellerProfile.uplineId;
+        let level = 1;
+        
+        // Commission percentages for each level
+        const commissionRates = {
+            1: 1.0,   // Level 1: 1%
+            2: 0.5,   // Level 2: 0.5%
+            3: 0.3,   // Level 3: 0.3%
+        };
+        
+        // Calculate commissions for up to 3 levels
+        while (currentUplineId && level <= 3) {
+            const { data: uplineProfile } = await supabaseAdmin
+                .from('profiles')
+                .select('id, full_name, uplineId')
+                .eq('id', currentUplineId)
+                .single();
+                
+            if (!uplineProfile) break;
+            
+            const percentage = commissionRates[level as keyof typeof commissionRates];
+            const commissionAmount = (saleAmount * percentage) / 100;
+            
+            // Create commission record
+            const commissionData = {
+                saleId: plotData?.id || `sale_${Date.now()}`,
+                sellerId: sellerId,
+                sellerName: sellerProfile.full_name || 'Unknown',
+                receiverId: uplineProfile.id,
+                receiverName: uplineProfile.full_name || 'Unknown',
+                level: level,
+                amount: commissionAmount,
+                percentage: percentage,
+                saleAmount: saleAmount,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                plotId: plotData?.id || null,
+                projectName: plotData?.projectName || null,
+            };
+            
+            await adminDb.collection('commissions').add(commissionData);
+            
+            // Update upline's wallet
+            const walletRef = adminDb.collection('wallets').doc(uplineProfile.id);
+            const walletDoc = await walletRef.get();
+            
+            if (walletDoc.exists) {
+                await walletRef.update({
+                    downlineSaleBalance: admin.firestore.FieldValue.increment(commissionAmount),
+                    totalBalance: admin.firestore.FieldValue.increment(commissionAmount),
+                });
+            } else {
+                // Create wallet if it doesn't exist
+                await walletRef.set({
+                    ownerId: uplineProfile.id,
+                    directSaleBalance: 0,
+                    downlineSaleBalance: commissionAmount,
+                    totalBalance: commissionAmount,
+                });
+            }
+            
+            // Create transaction record for the commission
+            const transactionData = {
+                walletId: uplineProfile.id,
+                walletType: 'downline',
+                type: 'credit',
+                amount: commissionAmount,
+                date: admin.firestore.FieldValue.serverTimestamp(),
+                description: `Level ${level} commission from ${sellerProfile.full_name}'s sale`,
+                status: 'completed',
+            };
+            
+            await adminDb.collection('transactions').add(transactionData);
+            
+            commissions.push(commissionData);
+            
+            // Move to next level
+            currentUplineId = uplineProfile.uplineId;
+            level++;
+        }
+        
+        return {
+            success: true,
+            commissionsGenerated: commissions.length,
+            totalDistributed: commissions.reduce((sum, c) => sum + c.amount, 0)
+        };
+        
+    } catch (error) {
+        console.error('Error processing commission calculation:', error);
+        throw new Error('Failed to process commission calculation');
+    }
+}
+
+export async function getBrokerCommissions(brokerId?: string) {
+    const user = await getAuthenticatedUser();
+    
+    try {
+        const commissionsRef = adminDb.collection('commissions');
+        let query = commissionsRef.orderBy('createdAt', 'desc');
+        
+        // If brokerId is provided (for broker's own commissions), filter by receiverId
+        if (brokerId) {
+            query = query.where('receiverId', '==', brokerId);
+        }
+        
+        const snapshot = await query.get();
+        
+        const commissions = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate()?.toISOString() || '',
+        }));
+        
+        return commissions;
+        
+    } catch (error) {
+        console.error('Error fetching commissions:', error);
+        throw new Error('Failed to fetch commissions');
+    }
+}
+

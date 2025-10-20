@@ -1,0 +1,322 @@
+pick eb61068 initial scaffold
+pick 0101719 Updated app
+pick 4b8b7b0 before login add home page which is visible to all users also with contr
+pick a61a24c make home page like but menu should bold it should clear and remove tran
+pick 1260d5e "https://res.cloudinary.com/dze0vnyip/image/upload/v1752573952/Flux_Dev_
+pick 2603b30 remove contract us from home and then add this in contract page
+pick 46b9062 my film name is unique investor and i also have logo but confuse where s
+pick d986cb8 i upload logo inside public then logo in svg format AND below of slide
+pick 5964072 https://res.cloudinary.com/dze0vnyip/image/upload/v1752577691/Key_Exchan
+pick 726a804 make green color to white
+pick 85c50aa if user are on login page and properties then give direct option go on h
+pick 86d25b1 Make the following changes:
+pick 663bb2b add footer for my site also give space to add map location
+pick 4da0e6d home page slider image are not responsive so made it responsive on mobil
+pick 5e5280d for menu part there is not humbuger in mobile menu phone not get visible
+pick 2cc7f38 error
+pick 69f5f13 connect my app to firebase console also connect contract form when user
+pick 32f6425 after about add below property gallary i will upload later  of 2 images
+pick b66f96b https://res.cloudinary.com/dze0vnyip/image/upload/v1752748764/3f511b4d-e
+pick a0f6267 change this color to yellow and make it little bit thik text
+pick e19bdd4 28.6199236, 77.4162783 log, lat of my location change footer background
+pick 1702d31 // Import the functions you need from the SDKs you need import { initial
+pick e6197b0 Build a testimonial (review) feature for my website.
+pick c6dfe4c how can i add new review by firebase collection
+pick a36fba8 i want add testimonial by firebasedatabase collection using these fields
+pick 5117381 do same for login when i add usename and password and phone in database
+pick 96d000c i want remove investor login  and tell me how to fill details in collect
+pick de23a3a i want to just for testing so make by collection only
+pick ea6a93f change addres in footer "shop no. 2, 1st floor, shree shahmal pahalwan c
+pick 4f38556 Build a real-estate plot inventory feature with these requirements:
+pick ff8c880 remove these both pages and give choose from inventroy plots to choose p
+pick 25b5129 i want to you remove to pages of properties no need mention dummy inveto
+pick 85ce4e6 Make the following changes:
+pick d06d154 sorry for last command , what you have remove this dashboard is still vi
+pick 43849a9 Make the following changes:
+pick 06ce0f9 Build a real estate plot inventory and management system using Firestore
+pick 8681da9 give something like attach images but nothing show untill i project in c
+pick e5014e5 i add like this but still nothing visibile properties menu
+pick 808766f still no data to show
+pick d3bdac9 where i will these data tell me
+pick 7519cb6 Make the following changes:
+pick 25163f9 i dont want restore that dummy data of propeties i want to admin access
+pick 561ecfa i updated but nothing changes in this dashboard
+pick 5e10237 Make the following changes:
+pick 5bc96e6 Make the following changes:
+pick 6252f8b remove this my account section i can still see this buttone
+pick cdca918 give here one button to back to  home
+pick 35b4836 i want back to home button in this page
+pick 07fddb5 Make the following changes:
+pick 4833d99 Make the following changes:
+pick b72aefe when some click on Explore Property buttone of header then he should red
+pick 0955cbf All you need to do is create the plots collection in your Firestore data
+pick 2aae217 I see this error with the app, reported by NextJS, please fix it. The er
+pick c78bae4 I see this error with the app, reported by NextJS, please fix it. The er
+pick 79500dc 1/1
+pick 3bcc092 thats good now but now i want to this admin panel only admin can access
+pick d5029ed if you have remeber i used firestore collection for login and did use au
+pick c034146 I see this error with the app, reported by NextJS, please fix it. The er
+pick aeb1318 I see this error with the app, reported by NextJS, please fix it. The er
+pick fa64937 i m going fir live this then do remaing works
+pick 6b672b9 I see this error with the app, reported by NextJS, please fix it. The er
+pick b9f5b35 I see this error with the app, reported by NextJS, please fix it. The er
+pick 10792f4 first image is authentication page 2nd is firestore collection but i fil
+pick 933bbfb I see this error with the app, reported by NextJS, please fix it. The er
+pick 3eb55fb still can't login with id password on authe page which i used leave it w
+pick 095819f The NextJS app server is having trouble starting. Please identify what c
+pick 04e1c15 everthing below 90
+pick 67d35bd error"8d1ac26d6ca0: Pull complete Digest: sha256:8ce30cad0fb9e63930ee987
+pick d07841c anything if i have to do from my side before publilsh
+pick c04a599 I see this error with the app, reported by NextJS, please fix it. The er
+pick e6b4e1b I see this error with the app, reported by NextJS, please fix it. The er
+pick acc5d4c I see this error with the app, reported by NextJS, please fix it. The er
+pick c8180b2 I see this error with the app, reported by NextJS, please fix it. The er
+pick c7a28ba studio-9085779672:~/studio{master}$ firebase deploy
+pick 40343a2 studio-9085779672:~/studio{master}$ firebase deploy
+pick 603310c I see this error with the app, reported by NextJS, please fix it. The er
+pick 687433c change this to Shop no. 2, 1st floor, Shree Shahmal Pahalwan Complex, ne
+pick 1ece78a in my live website there is firebase logo or i dont what i call it this
+pick b3c3e68 I see this error with the app, reported by NextJS, please fix it. The er
+pick 5446182 The NextJS app server is having trouble starting. Please identify what c
+pick c103ef4 The NextJS app server is having trouble starting. Please identify what c
+pick af0f41b 1 of 1 error Next.js (14.2.5) is outdated (learn more)
+pick c059e23 when i hover on invertory grid on desktop i show details but on mobile w
+pick 63b2fc5 no no no i want how get email or password where i need to set that
+pick 5573da5 i cant login from here also i dont want signup for create  account i jus
+pick 675f6f4 i did all step but still login failed msg i attached images all four ima
+pick 3bed8b8 i entered previous credntial which i add but still show this
+pick bb5e264 for every case this login give same error  i want it should diffrent for
+pick b99f591 Build a login system using Firebase Authentication (email/password) with
+pick 655a9af again failed i attach all screenshot i added 2 user and   tried both for
+pick bdf620e i know it will never so remove all authentication
+pick c66e3bf Make the following changes:
+pick a998f41 Make the following changes:
+pick d492d0c The `npm install` command failed in my project. Analyze the following er
+pick d8efb78 Remove all NextAuth.js authentication from my Next.js app and instead in
+pick 555ee3a I see this error with the app, reported by NextJS, please fix it. The er
+pick cf1de3c I see this error with the app, reported by NextJS, please fix it. The er
+pick fb0ebd8 remove supabase auth from my next.js app instead of this i will tell you
+pick 392f4d1 Make the following changes:
+pick 6e9d219 I see this error with the app, reported by NextJS, please fix it. The er
+pick 2ec4e4f I see this error with the app, reported by NextJS, please fix it. The er
+pick ceacc64 I see this error with the app, reported by NextJS, please fix it. The er
+pick 07c7a11 I see this error with the app, reported by NextJS, please fix it. The er
+pick 90bc4e7 for add login by firestore datebase collection i know it not reccomded b
+pick 68c0f9b add login by firestore datebase collection i know it not reccomded but i
+pick b1e028a Make the following changes:
+pick 46e6c7c Make the following changes:
+pick 41923ed did made any mistake i cant login
+pick fdbba9c without login anyone can disturb my app why you gave broker dashboard an
+pick 87f0b50 i want to use next auth for login and logout in my app but dont know how
+pick e903a1e I see this error with the app, reported by NextJS, please fix it. The er
+pick 8688ca2 still i can not  login in my app with same email and password
+pick dda90f6 admin's email (admin@uniqueinvestor.com) but have selected the "Broker"
+pick 60e2a6c now what ?? you are useless nothing knows
+pick 0344192 here is firebase config "// Import the functions you need from the SDKs
+pick 5aeb4d3 i m sorry to you i know you cant do this so remove all login work you ha
+pick d12fa98 The `npm install` command failed in my project. Analyze the following er
+pick 5d0c3b5 i m on this and i think complete most also add anon public key in .env.l
+pick d99241e now what i need to do from side for login
+pick 0015de1 Failed to compile
+pick 7672525 except account i want all things with full functionality in admin dashbo
+pick 2e97ee6 nothing changes in admin section and one error got in console is any mis
+pick 9041aa0 how can app differentiate between admin and broker how app know this use
+pick 31a52ca you have not added yet inventory commision testimonial in admin dashboar
+pick f678fda i m going to deploy this everything is okay can i deploy
+pick c40465e studio-9085779672:~/studio{master}$ firebase deploy
+pick dd719d1 blank page visible in app
+pick 68c49ae css issue is not resolve yet
+pick cf711d7 can deploy now
+pick 8f67302 studio-9085779672:~/studio{master}$ firebase deploy
+pick d70130d I see this error with the app, reported by NextJS, please fix it. The er
+pick 23cd050 I see this error with the app, reported by NextJS, please fix it. The er
+pick faf24cf check this with link
+pick 81a5398 check this page
+pick 932ae77 I see this error with the app, reported by NextJS, please fix it. The er
+pick a3d61d8 I see this error with the app, reported by NextJS, please fix it. The er
+pick 30f6426 I see this error with the app, reported by NextJS, please fix it. The er
+pick 053c432 I see this error with the app, reported by NextJS, please fix it. The er
+pick aac2f1f error Error: Missing or insufficient permissions.     at addPlot (rsc:/
+pick 0d09cc2 why every time in my app css loaded correctly  i face this problem most
+pick 90b2c7d now login page not working when i enter email and pass then just page re
+pick 4b30c49 there are so many plots and testimonials firestore database collection b
+pick 60e0a99 check there other issue nothing changes also when i filled contract form
+pick d86b348 you are just changing rules but this explore property , contact ,testimo
+pick 1831acd not working still not testimonial in my site and explore property is als
+pick a3f884d rules_version = '2';
+pick 15ac952 I see this error with the app, reported by NextJS, please fix it. The er
+pick 0f04955 FirebaseError: Missing or insufficient permissions.
+pick 45b624b anything i need to do change in firestore database
+pick 15bde61 everything working good and please remember this  but only after login i
+pick c508172 also give rules which i need to change in firestore database rule then p
+pick 49a68ae error is same after login i cant edit update in my plot inventory error
+pick 05c6c14 give me rules which i need publish firestore database which is inside fi
+pick 42d6ac9 I see this error with the app, reported by NextJS, please fix it. The er
+pick f834101 as i run firebase deploy i got error studio-9085779672:~/studio{master}
+pick b94297b again same error in after firebase deploy 🔧 Fix my current Next.js 15
+pick 8d4306c studio-9085779672:~/studio{master}$ firebase deploy
+pick 2fe123b again this problem arires when i login in by admin dashboard and try to
+pick 8bca250 next problem please resolve fast and dont say sorry i m get irritate wit
+pick e262ccf FirebaseError: Expected first argument to collection() to be a Collectio
+pick 6e289e4 i m getting this error in my deployed website
+pick f2a21c7 check firebase rule also
+pick 1f6049c anything i need update in firebase console > database rules current rule
+pick 35a4172 now something diffrent error but on same page after login
+pick c8ef288 Error: Failed to update plot.     at updatePlot (rsc://React/Server/webp
+pick 286c6ff check server.ts also of lib
+pick e7cd383 when you will solve this i m asking again and again
+pick 96871d2 Error: Failed to update plot.     at updatePlot (rsc://React/Server/webp
+pick c2afe4f Error: Server action failed: Edge Function returned a non-2xx status cod
+pick dd09259 Error: Server action failed: Edge Function returned a non-2xx status cod
+pick 1b04862 what i need to do from side is there anythin need to do in supabase
+pick b699b16 Set the Environment Variable in Supabase:
+pick 1f151f8 no its not complete i changed some letter with another but i  want to wh
+pick ab1f257 I see this error with the app, reported by NextJS, please fix it. The er
+pick 6f946cd I see this error with the app, reported by NextJS, please fix it. The er
+pick 1a91985 what i need to do from my side
+pick 06bd805 there is already .env.local in root folder and also inside some keys are
+pick bc7176d studio-9085779672:~/studio{master}$ ^C studio-9085779672:~/studio{master
+pick b7ef84f Error: A "use server" file can only export async functions, found object
+pick 6a648da i ran firebase deploy but got error
+pick e1c527a I see this error with the app, reported by NextJS, please fix it. The er
+pick d4e4191 I see this error with the app, reported by NextJS, please fix it. The er
+pick 68a74fa same error again after firebase deploy run in terminal
+pick a083524 again same issue if we can replace with something or if remove this then
+pick d80db3e you change still show me error then i take help of gemini ai and it sugg
+pick b5b911b I see this error with the app, reported by NextJS, please fix it. The er
+pick 7944f66 this remain same after i deploy on custom domain it not working tell me
+pick 0865bba It's great that you're leveraging AI for your development\! To get the b
+pick db5ecb6 studio-9085779672:~/studio{master}$ firebase deploy
+pick 8db4056 you can resolve this i know tell me if use some other auth like next aut
+pick 53382f4 it still same before i use this code " action file
+pick 11a3ff5 studio-9085779672:~/studio{master}$ firebase deploy
+pick 9fe7412 studio-9085779672:~/studio{master}$ firebase deploy
+pick 852622f where is hero section images slider code and
+pick 15a1c6f I see this error with the app, reported by NextJS, please fix it. The er
+pick 6414c45 i login in my app with broker and admin id both show same type  layout b
+pick 5e3b844 remove inventory and testimonial from broker dashboard and also all dumm
+pick 58d0d83 i facing issue while adding new broker from where i can solve this issue
+pick a6338b5 nothing working
+pick 732cee4 clear my confusion these value need paste inside double quotes or singel
+pick 74f7c74 i paste this is it correct now what i need to do
+pick b1023ce when i added broker through admin dashboard then got added but when i tr
+pick 626339e give here option to delete broker also and these button  not function ye
+pick d375b59 ReferenceError: buttonVariants is not defined     at BrokersPage (webpac
+pick 1e692a2 in broker login pages inside commission show all project of plot invetor
+pick 477e9e2 there is error after login admin dashboard broker list not show correctl
+pick ca7d255 studio-9085779672:~/studio{master}$ firebase deploy
+pick 70ab348 there issue something i can update plot inventory but when i try see det
+pick d86ff2f now it give me error what i need to do from my side
+pick adad096 I want to add MLM commission logic in my app.
+pick d926793 I want to build an MLM (Multi-Level Marketing) commission system for bro
+pick 9b27cb7 in admin dashboard broker section now again started showing error
+pick 0ff7e81 two error still in my site on broker section when opened through admin d
+pick 0694313 there are 4 broker in supabase who got authrized and in dashboard also i
+pick 8a54029 i tried to add broker by admin dashboard but without form i get error of
+pick bdbf2ac in broker section either it is from admin dashboard or direct give there
+pick 94b7be9 is getting error in terminal studio-9085779672:~/studio{master}$ supabas
+pick b13b1d2 this issue still not resolve you fixed yesterday also i can see total nu
+pick d9525e1 not resolve yet remove everything which cause this if you have to remove
+pick b4ed988 Changes before Firebase Studio auto-run
+pick 796801d my previous error resolve but i m getting this error can tell how can i
+pick da7ae74 every issue is resolve now thank you so much now i want this testimonial
+pick 8d08b0a I see this error with the app, reported by NextJS, please fix it. The er
+pick 1a5e67f I see this error with the app, reported by NextJS, please fix it. The er
+pick 94cbb02 Changes before Firebase Studio auto-run
+pick 2987004 can you tell me what is issue facing so you  cant create slider here
+pick f9c3f3c i want this type of tree appeared on broker dashboard i added add header
+pick 705c3e2 i checked but there is no any option to check broker dowline in broker d
+pick 58337a4 in admin dashboard give here option to check downline on and you previou
+pick 9540c8e i mistakly deleted node modules and package lock file then i run npm ins
+pick fbf5f95 can you solve this Module '"lucide-react"' has no exported member 'Sitem
+pick 177669e i think you are changing in wrong folder my issue is  root src/app/admin
+pick 488713d as you fixed sitemap to network but forget to remove and netwrk check at
+pick 8542838 i want this is as  Hierarchical view of this broker's downline network.
+pick 2a39385 I see this error with the app, reported by NextJS, please fix it. The er
+pick 4b461b0 I see this error with the app, reported by NextJS, please fix it. The er
+pick f95f179 I see this error with the app, reported by NextJS, please fix it. The er
+pick 51ce860 I see this error with the app, reported by NextJS, please fix it. The er
+pick 9a2a079 as now admin can see all broker downline now i want  broker can see thie
+pick 61ef54c Make the following changes:
+pick 601c322 Make the following changes:
+pick f0870bd in these details add on more thing add here if plot sold then buyers nam
+pick 619b367 in local server/host  i can access broker list inside admin dashboard bu
+pick da7516a i used firebase for hosting and supabase for auth login and database
+pick 9296adf i made a mistake i have two project inside console one is( unique-invest
+pick 9299d09 still this issue can you guide so that i can details error of this or if
+pick 85a3934 Failed to compile.
+pick 256ca80 On the /broker page of my Next.js website, create a "Welcome Letter" sec
+pick 27b53ea On the `/broker` page of my Next.js website, implement a broker earnings
+pick 95b23d4 wallet is added in broker dashboard but in admin dashboard it is still n
+pick efbbef9 getting error
+pick 91ffddc UNIQUE INVESTOR Where Dreams Come True _________________________________
+pick 3b04006 change where is broker mention in ui change to ASSOCIATE because it soun
+pick ac24824 this contact us button when user click here then direct show msg like 'i
+pick 934b6ea add option to add phone number also in both contract form either from di
+pick 76f6ca8 explore property not working no opption appear to select in project name
+pick 49d3a26 not resolve yet
+pick 2c90fb4 check this and please tell exact problem
+pick 30d2cda i paste this "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFA
+pick 8f7f493 still this error apears can you tell what i need to cross verify in all
+pick 70d6cbc check this step carefully there github something like this i didnt creat
+pick 7902fc6 still error not resolve yet and i cant add plot in admin section also is
+pick e2f77aa remove all unused code ,file and folder so that perfomance will increase
+pick 2e3c9e0 Fix this compilation error in my Next.js 15 app for Firebase Hosting:
+pick 1b51be9 I'm deploying a Next.js 15 app with Firebase Hosting (App Router, not Pa
+pick 14d0fdc I see this error with the app, reported by NextJS, please fix it. The er
+pick 0bfdc40 i m error on custom domain because i used await cookies. is it right ? i
+pick 45b26ec one error still tell me one thing if used const cookies = await cookies
+pick f1148c5 this .get cause acctuall error any other way if we can solve without res
+pick 2bf62e8 still error on get same error take refrance of this code to resolve erro
+pick 1c165fb inside explore property plots are not fetch correctly which i saved insi
+pick 90339c5 I see this error with the app, reported by NextJS, please fix it. The er
+pick 5dd9f91 not resolve yet testimonial working and other collection also working fi
+pick 3e379d8 I see this error with the app, reported by NextJS, please fix it. The er
+pick 56ef4c3 what i need to do from my side fix errro
+pick 4ce3e55 i think it can access firebase database collection all thing working fin
+pick 12fafca how to add more plots in inventory tell me and still not plots in inveto
+pick c7487f7 cloudnary link in local but inside my website it is not working alo
+pick 084c063 CHECK and fix the all errors
+pick 94f1a77 check @actions.ts and fix the error
+pick abb2dec first commit
+pick b1be7b4 Add .gitignore to ignore build and node_modules
+pick a31b10c Remove build/cache and node_modules from repo # empty
+pick 4f020c5 i want to push this code in form of repo on github but file size is bigg
+pick 54afca3 check command history "studio-9085779672:~/studio{main}$ git init Reinit
+pick e862c14 Fix .gitignore and remove large build artifacts # empty
+pick 940f624 still error  delete mode 100644 .firebase/estatelink-loxoy/functions/nod
+pick 8c1b90f first commit
+pick a77260e commit command
+pick f3a5907 live
+pick fd746d6 commission added
+
+# Rebase fd746d6 onto 4656c52 (291 commands)
+#
+# Commands:
+# p, pick <commit> = use commit
+# r, reword <commit> = use commit, but edit the commit message
+# e, edit <commit> = use commit, but stop for amending
+# s, squash <commit> = use commit, but meld into previous commit
+# f, fixup [-C | -c] <commit> = like "squash" but keep only the previous
+#                    commit's log message, unless -C is used, in which case
+#                    keep only this commit's message; -c is same as -C but
+#                    opens the editor
+# x, exec <command> = run command (the rest of the line) using shell
+# b, break = stop here (continue rebase later with 'git rebase --continue')
+# d, drop <commit> = remove commit
+# l, label <label> = label current HEAD with a name
+# t, reset <label> = reset HEAD to a label
+# m, merge [-C <commit> | -c <commit>] <label> [# <oneline>]
+#         create a merge commit using the original merge commit's
+#         message (or the oneline, if no original merge commit was
+#         specified); use -c <commit> to reword the commit message
+# u, update-ref <ref> = track a placeholder for the <ref> to be updated
+#                       to this position in the new commits. The <ref> is
+#                       updated at the end of the rebase
+#
+# These lines can be re-ordered; they are executed from top to bottom.
+#
+# If you remove a line here THAT COMMIT WILL BE LOST.
+#
+# However, if you remove everything, the rebase will be aborted.
+#
