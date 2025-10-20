@@ -19,6 +19,7 @@ import { BrokerReferralRecord } from '@/lib/types'
 import { Users, UserPlus, Clock, CheckCircle, XCircle, Eye, UserCheck, UserX } from 'lucide-react'
 
 const newBrokerSchema = z.object({
+  referredName: z.string().min(2, 'Referred person name is required'),
   username: z.string().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.literal('broker').default('broker'),
@@ -42,7 +43,8 @@ export default function AdminReferralsPage() {
   const approvalForm = useForm<NewBrokerFormData>({
     resolver: zodResolver(newBrokerSchema),
     defaultValues: {
-      role: 'broker'
+      referredName: selectedReferral?.referredName || '',
+      role: 'broker',
     }
   })
 
@@ -58,24 +60,8 @@ export default function AdminReferralsPage() {
     setIsLoading(true)
     try {
       const data = await getBrokerReferrals() // Admin sees all referrals
-      // Map the data to ensure it matches BrokerReferralRecord interface
-      const mappedData: BrokerReferralRecord[] = data.map((item: any) => ({
-        id: item.id,
-        referrerId: item.referrerId || '',
-        referrerName: item.referrerName || '',
-        referrerEmail: item.referrerEmail || '',
-        referredName: item.fullName || item.referredName || '',
-        referredEmail: item.email || item.referredEmail || '',
-        referredPhone: item.phone || item.referredPhone || '',
-        note: item.notes || item.note || null,
-        status: item.status || 'pending',
-        createdAt: item.createdAt || item.submittedAt || '',
-        processedAt: item.processedAt || null,
-        processedBy: item.processedBy || null,
-        rejectionReason: item.rejectionReason || null,
-        newBrokerId: item.newBrokerId || null,
-      }))
-      setReferrals(mappedData)
+      // Data is already properly mapped from the backend
+      setReferrals(data as BrokerReferralRecord[])
     } catch (error) {
       console.error('Error loading referrals:', error)
       toast({
@@ -99,6 +85,11 @@ export default function AdminReferralsPage() {
         username: data.username,
         password: data.password,
         role: data.role,
+        referredName: data.referredName, // Use the value from the form
+        referredEmail: selectedReferral?.referredEmail,
+        referredPhone: selectedReferral?.referredPhone,
+        referrerId: selectedReferral?.referrerId,
+        referrerName: selectedReferral?.referrerName,
       })
 
       if (result.success) {
@@ -394,6 +385,18 @@ export default function AdminReferralsPage() {
           </DialogHeader>
           
           <form onSubmit={approvalForm.handleSubmit(handleApproval)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="referredName">Referred Person Name *</Label>
+              <Input
+                id="referredName"
+                placeholder="Enter referred person's full name"
+                {...approvalForm.register('referredName')}
+              />
+              {approvalForm.formState.errors.referredName && (
+                <p className="text-sm text-red-600">{approvalForm.formState.errors.referredName.message}</p>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="username">Username *</Label>
               <Input

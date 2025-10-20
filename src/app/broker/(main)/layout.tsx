@@ -6,19 +6,19 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, TrendingUp, UserCircle, LogOut, Home, Network, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, UserCircle, LogOut, Home, Network, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
 
 const menuItems = [
   { href: '/broker/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/broker/performance', icon: BarChart3, label: 'Performance' },
   { href: '/broker/referral', icon: UserPlus, label: 'Referrals' },
   { href: '/broker/wallets', icon: Wallet, label: 'Wallets' },
   { href: '/broker/transactions', icon: CreditCard, label: 'Transactions' },
   { href: '/broker/verification', icon: Shield, label: 'Verification' },
   { href: '/broker/downline', icon: Network, label: 'My Downline' },
-  { href: '/broker/commissions', icon: TrendingUp, label: 'Commissions' },
   { href: '/broker/account', icon: UserCircle, label: 'Account' },
 ];
 

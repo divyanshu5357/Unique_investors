@@ -895,7 +895,7 @@ export async function bulkAddPlots(data: BulkAddPlotsData) {
     }
 }
 
-export async function createBroker(values: z.infer<typeof BrokerFormSchema>) {
+export async function createBroker(values: z.infer<typeof BrokerFormSchema> & Partial<import('./types').BrokerReferralRecord>) {
     await authorizeAdmin();
     const supabaseAdmin = await getSupabaseAdminClient();
 
@@ -931,9 +931,10 @@ export async function createBroker(values: z.infer<typeof BrokerFormSchema>) {
     // Create profile record for the new broker
     const profileData = {
         id: authData.user.id,
-        email: values.email,
-        name: values.fullName,
-        full_name: values.fullName,
+        email: values.email || values.referredEmail || null,
+        phone: values.referredPhone || null,
+        name: values.fullName || values.referredName || null,
+        full_name: values.fullName || values.referredName || null,
         role: 'broker',
         status: 'approved',
         commission: 0,
@@ -942,10 +943,11 @@ export async function createBroker(values: z.infer<typeof BrokerFormSchema>) {
         updatedat: new Date().toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        sponsorid: values.uplineId || null,
-        referred_by: values.uplineId || null,
-        "uplineId": values.uplineId || null,  // camelCase column for commission tracking
-        mobile_number: null,
+        sponsorid: values.uplineId || values.referrerId || null,
+        referred_by: values.uplineId || values.referrerId || null,
+        uplineId: values.uplineId || values.referrerId || null,
+        upline_name: values.referrerName || null,
+        mobile_number: values.referredPhone || null,
         address: null,
         profile_completed: false,
     };
@@ -1032,11 +1034,12 @@ export async function getBrokers(): Promise<Broker[]> {
 
     // Get sold plots from Supabase
     const brokersWithPlots = await Promise.all(combinedData.map(async (broker) => {
+        // Get plots where this broker is the seller (broker_id) OR old plots where they were updated_by
         const { data: soldPlots, error: plotsError } = await supabaseAdmin
             .from('plots')
             .select('*')
             .eq('status', 'sold')
-            .eq('updated_by', broker.id);
+            .or(`broker_id.eq.${broker.id},updated_by.eq.${broker.id}`);
 
         if (plotsError) {
             console.log(`Error fetching plots for broker ${broker.id}:`, plotsError.message);
@@ -1928,7 +1931,25 @@ export async function getBrokerReferrals(brokerId?: string) {
             throw new Error(`Failed to fetch referrals: ${error.message}`);
         }
 
-        return referrals || [];
+        // Map database fields to frontend expected format
+        const mappedReferrals = (referrals || []).map(referral => ({
+            id: referral.id,
+            referrerId: referral.referrer_id || '',
+            referrerName: referral.referrer_name || '',
+            referrerEmail: referral.referrer_email || '',
+            referredName: referral.referred_name || '',
+            referredEmail: referral.referred_email || '',
+            referredPhone: referral.referred_phone || '',
+            note: referral.note || null,
+            status: referral.status || 'pending',
+            createdAt: referral.created_at || '',
+            processedAt: referral.processed_at || null,
+            processedBy: referral.processed_by || null,
+            rejectionReason: referral.rejection_reason || null,
+            newBrokerId: referral.new_broker_id || null,
+        }));
+
+        return mappedReferrals;
         
     } catch (error) {
         console.error('Error fetching referrals:', error);
@@ -1944,6 +1965,11 @@ export async function processReferralRequest(formData: {
     username?: string;
     password?: string;
     role?: 'broker';
+    referredName?: string;
+    referredEmail?: string;
+    referredPhone?: string;
+    referrerId?: string;
+    referrerName?: string;
 }) {
     await authorizeAdmin();
     
@@ -1971,6 +1997,11 @@ export async function processReferralRequest(formData: {
                 throw new Error('Username and password are required for approval');
             }
             
+            // Validate required fields from referral data
+            if (!referralData.referred_name || !referralData.referred_email) {
+                throw new Error('Referral data is incomplete - missing name or email');
+            }
+            
             // Create auth user
             const { data: newUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
                 email: referralData.referred_email,
@@ -1979,7 +2010,7 @@ export async function processReferralRequest(formData: {
                 user_metadata: {
                     full_name: referralData.referred_name,
                     role: 'broker',
-                    phone: referralData.referred_phone,
+                    phone: referralData.referred_phone || '',
                 }
             });
             
@@ -1992,11 +2023,12 @@ export async function processReferralRequest(formData: {
                 .from('profiles')
                 .insert({
                     id: newUser.user.id,
+                    name: referralData.referred_name, // for legacy/NOT NULL constraint
                     full_name: referralData.referred_name,
                     email: referralData.referred_email,
                     role: 'broker',
-                    phone: referralData.referred_phone,
-                    upline_id: referralData.referrer_id, // Set the referrer as upline
+                    phone: referralData.referred_phone || '',
+                    sponsorid: referralData.referrer_id, // Set the referrer as sponsor
                 });
                 
             if (profileError) {
@@ -2027,8 +2059,8 @@ export async function processReferralRequest(formData: {
                 .update({
                     status: 'approved',
                     processed_at: new Date().toISOString(),
-                    processed_by: (await getAuthenticatedUser()).user.id,
-                    new_broker_id: newUser.user.id,
+                    username: validatedData.username,
+                    password: validatedData.password,
                 })
                 .eq('id', validatedData.referralId);
 
@@ -2049,7 +2081,6 @@ export async function processReferralRequest(formData: {
                 .update({
                     status: 'rejected',
                     processed_at: new Date().toISOString(),
-                    processed_by: (await getAuthenticatedUser()).user.id,
                     rejection_reason: validatedData.rejectionReason || 'No reason provided',
                 })
                 .eq('id', validatedData.referralId);
@@ -2458,33 +2489,39 @@ export async function calculateCommissionForSoldPlots() {
         
         console.log('✅ Cleared existing data, starting fresh calculation...');
         
-        // STEP 2: Get all sold plots
+        // STEP 2: Get all sold plots with broker information
         const { data: soldPlots, error: plotError } = await supabaseAdmin
             .from('plots')
             .select('*')
-            .eq('status', 'sold')
-            .not('updated_by', 'is', null) // updated_by represents the selling broker who marked it as sold
-            .not('sale_price', 'is', null);
+            .eq('status', 'sold');
 
         if (plotError) {
             throw new Error(`Failed to fetch sold plots: ${plotError.message}`);
         }
 
         if (!soldPlots || soldPlots.length === 0) {
-            console.log('❌ No sold plots found with broker information');
-            return { success: false, message: 'No sold plots found with broker information' };
+            console.log('❌ No sold plots found');
+            return { success: false, message: 'No sold plots found' };
         }
 
-        console.log(`📊 Found ${soldPlots.length} sold plots`);
+        // Filter plots that have broker information (either broker_id or updated_by)
+        const plotsWithBroker = soldPlots.filter(plot => plot.broker_id || plot.updated_by);
+        
+        console.log(`📊 Found ${soldPlots.length} sold plots, ${plotsWithBroker.length} have broker information`);
         let processedCount = 0;
         let totalCommissionDistributed = 0;
 
         // STEP 3: Recalculate commissions for each plot
-        for (const plot of soldPlots) {
+        for (const plot of plotsWithBroker) {
             try {
+                // Use broker_id for booked plots, fall back to updated_by for old sold plots
+                const brokerId = plot.broker_id || plot.updated_by;
+                // Use total_plot_amount for booked plots, fall back to sale_price for old sold plots
+                const saleAmount = plot.total_plot_amount || plot.sale_price;
+                
                 console.log(`\n🔄 Processing plot ${plot.plot_number} (${plot.project_name})`);
-                console.log(`   Sale Price: ₹${plot.sale_price}`);
-                console.log(`   Selling Broker ID: ${plot.updated_by}`);
+                console.log(`   Sale Amount: ₹${saleAmount}`);
+                console.log(`   Broker ID: ${brokerId}`);
                 
                 // Use default commission rate of 6% to match the direct seller rate
                 const defaultCommissionRate = plot.commission_rate || 6;
@@ -2492,18 +2529,19 @@ export async function calculateCommissionForSoldPlots() {
 
                 // Calculate commission using our existing function
                 const result = await processCommissionCalculation(
-                    plot.updated_by, // The broker who updated the plot to sold status
-                    plot.sale_price,
+                    brokerId,
+                    saleAmount,
                     {
                         id: plot.id,
                         projectName: plot.project_name,
+                        plotNumber: plot.plot_number,
                         commissionRate: defaultCommissionRate
                     }
                 );
 
                 console.log(`   ✅ Commission calculated for plot ${plot.plot_number}`);
                 processedCount++;
-                totalCommissionDistributed += (plot.sale_price * defaultCommissionRate) / 100;
+                totalCommissionDistributed += (saleAmount * defaultCommissionRate) / 100;
 
             } catch (plotError) {
                 console.error(`❌ Error processing plot ${plot.plot_number}:`, plotError);
@@ -2512,7 +2550,7 @@ export async function calculateCommissionForSoldPlots() {
         }
 
         console.log(`\n🎉 Commission calculation complete!`);
-        console.log(`   Plots processed: ${processedCount}/${soldPlots.length}`);
+        console.log(`   Plots processed: ${processedCount}/${plotsWithBroker.length}`);
         console.log(`   Total commission distributed: ₹${totalCommissionDistributed.toFixed(2)}`);
 
         // Revalidate relevant pages
@@ -2562,28 +2600,35 @@ export async function recalculateCommissionForPlot(plotId: string) {
             throw new Error('Plot is not sold yet');
         }
 
-        if (!plot.updated_by) {
+        // Use broker_id for booked plots, fall back to updated_by for old sold plots
+        const brokerId = plot.broker_id || plot.updated_by;
+        
+        if (!brokerId) {
             throw new Error('No broker information found for this plot');
         }
 
-        if (!plot.sale_price) {
-            throw new Error('No sale price found for this plot');
+        // Use total_plot_amount for booked plots, sale_price for old sold plots
+        const saleAmount = plot.total_plot_amount || plot.sale_price;
+        
+        if (!saleAmount) {
+            throw new Error('No sale amount found for this plot');
         }
 
         console.log(`📊 Plot Details:`);
         console.log(`   Project: ${plot.project_name}`);
         console.log(`   Plot #: ${plot.plot_number}`);
-        console.log(`   Sale Price: ₹${plot.sale_price}`);
-        console.log(`   Broker ID: ${plot.updated_by}`);
+        console.log(`   Sale Amount: ₹${saleAmount}`);
+        console.log(`   Broker ID: ${brokerId}`);
         console.log(`   Commission Rate: ${plot.commission_rate || 6}%`);
 
         // Calculate commission
         const result = await processCommissionCalculation(
-            plot.updated_by,
-            plot.sale_price,
+            brokerId,
+            saleAmount,
             {
                 id: plot.id,
                 projectName: plot.project_name,
+                plotNumber: plot.plot_number,
                 commissionRate: plot.commission_rate || 6, // Default to 6% if not set
             }
         );
@@ -2856,20 +2901,46 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
         // 1. Update remaining_amount and paid_percentage
         // 2. Change status to 'Sold' if paid_percentage >= 75%
 
-        // Check if plot was converted to Sold
-        const { data: updatedPlot } = await supabaseAdmin
+        // Wait a moment for the trigger to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+
+        // Check updated plot status and paid percentage
+        const { data: updatedPlot, error: checkError } = await supabaseAdmin
             .from('plots')
-            .select('status, paid_percentage, commission_status')
+            .select('status, paid_percentage, commission_status, broker_id, total_plot_amount, plot_number, project_name')
             .eq('id', values.plotId)
             .single();
 
-        // If plot was converted to Sold and commission hasn't been distributed yet
-        if (updatedPlot?.status?.toLowerCase() === 'sold' && updatedPlot?.commission_status === 'pending') {
-            await triggerCommissionDistribution(values.plotId);
+        if (checkError) {
+            console.error('❌ Error checking plot status:', checkError);
+        } else {
+            console.log('📊 Plot status after payment:', {
+                plotId: values.plotId,
+                status: updatedPlot?.status,
+                paidPercentage: updatedPlot?.paid_percentage,
+                commissionStatus: updatedPlot?.commission_status,
+                brokerId: updatedPlot?.broker_id,
+            });
+
+            // Automatically trigger commission distribution at 75%+ payment if not already paid
+            if (
+                Number(updatedPlot?.paid_percentage) >= 75 &&
+                updatedPlot?.commission_status === 'pending'
+            ) {
+                console.log('🎯 Payment reached 75%! Triggering commission distribution...');
+                await triggerCommissionDistribution(values.plotId);
+            } else if (updatedPlot?.commission_status === 'paid') {
+                console.log('✅ Commission already paid');
+            } else {
+                console.log(`📝 Plot still in ${updatedPlot?.status} status (${updatedPlot?.paid_percentage}% paid)`);
+            }
         }
 
         revalidatePath('/admin/booked-plots');
         revalidatePath('/admin/inventory');
+        revalidatePath('/admin/brokers');
+        revalidatePath('/admin/associates');
         
         return payment;
     } catch (error) {
@@ -2889,14 +2960,12 @@ async function triggerCommissionDistribution(plotId: string) {
         // Get plot details with broker information
         const { data: plot, error: plotError } = await supabaseAdmin
             .from('plots')
-            .select(`
-                *,
-                broker:profiles!plots_broker_id_fkey(id, full_name, uplineId)
-            `)
+            .select('*')
             .eq('id', plotId)
             .single();
 
         if (plotError || !plot) {
+            console.error('❌ Plot not found:', plotError);
             throw new Error('Plot not found');
         }
 
@@ -2904,82 +2973,55 @@ async function triggerCommissionDistribution(plotId: string) {
         const brokerId = plot.broker_id;
 
         if (!soldAmount || !brokerId) {
+            console.error('❌ Missing required data:', { soldAmount, brokerId });
             throw new Error('Missing required plot information for commission calculation');
         }
 
-        // Calculate commissions
-        const directCommission = soldAmount * 0.06; // 6% for direct seller
-        const level1Commission = soldAmount * 0.02; // 2% for first upline
-        const level2Commission = soldAmount * 0.005; // 0.5% for second upline
-
-        // Get broker's upline chain
-        const { data: broker } = await supabaseAdmin
-            .from('profiles')
-            .select('uplineId')
-            .eq('id', brokerId)
-            .single();
-
-        let level1UplineId = broker?.uplineId;
-        let level2UplineId = null;
-
-        if (level1UplineId) {
-            const { data: level1 } = await supabaseAdmin
-                .from('profiles')
-                .select('uplineId')
-                .eq('id', level1UplineId)
-                .single();
-            level2UplineId = level1?.uplineId;
-        }
-
-        // Distribute commissions using existing RPC functions
-        
-        // 1. Direct commission to seller (6%)
-        await supabaseAdmin.rpc('upsert_seller_commission', {
-            p_seller_id: brokerId,
-            p_plot_id: plotId,
-            p_sold_amount: soldAmount,
-            p_commission_rate: 6,
+        console.log(`💰 Triggering commission distribution for plot ${plotId}:`, {
+            project: plot.project_name,
+            plotNumber: plot.plot_number,
+            soldAmount,
+            brokerId,
+            status: plot.status,
+            commissionStatus: plot.commission_status
         });
 
-        // 2. Level 1 upline commission (2%)
-        if (level1UplineId) {
-            await supabaseAdmin.rpc('upsert_upline_commission', {
-                p_seller_id: brokerId,
-                p_upline_id: level1UplineId,
-                p_plot_id: plotId,
-                p_sold_amount: soldAmount,
-                p_upline_level: 1,
-                p_commission_rate: 2,
-            });
-        }
-
-        // 3. Level 2 upline commission (0.5%)
-        if (level2UplineId) {
-            await supabaseAdmin.rpc('upsert_upline_commission', {
-                p_seller_id: brokerId,
-                p_upline_id: level2UplineId,
-                p_plot_id: plotId,
-                p_sold_amount: soldAmount,
-                p_upline_level: 2,
-                p_commission_rate: 0.5,
-            });
-        }
-
-        // Mark commission as paid
-        await supabaseAdmin
-            .from('plots')
-            .update({ commission_status: 'paid' })
-            .eq('id', plotId);
-
-        console.log(`Commission distributed for plot ${plotId}:`, {
-            direct: directCommission,
-            level1: level1Commission,
-            level2: level2Commission,
+        // Use the existing commission calculation function
+        const commissionRate = plot.commission_rate || 6; // Default to 6% if not set
+        const result = await processCommissionCalculation(brokerId, soldAmount, {
+            id: plot.id,
+            projectName: plot.project_name,
+            plotNumber: plot.plot_number,
+            commissionRate: commissionRate
         });
+
+        if (result.success) {
+            // Mark commission as paid
+            await supabaseAdmin
+                .from('plots')
+                .update({ commission_status: 'paid' })
+                .eq('id', plotId);
+
+            console.log(`✅ Commission distributed successfully for plot ${plot.plot_number}:`, {
+                totalDistributed: result.totalDistributed,
+                sellerCommission: result.sellerCommission,
+                uplineCommissions: result.uplineCommissions
+            });
+        } else {
+            console.error('❌ Commission calculation failed:', result.error);
+            throw new Error(`Commission calculation failed: ${result.error}`);
+        }
+
+        // Revalidate broker pages to show updated balances
+        revalidatePath('/admin/brokers');
+        revalidatePath('/admin/associates');
+        revalidatePath('/broker/wallets');
+        revalidatePath('/broker/dashboard');
 
     } catch (error) {
-        console.error('Error in triggerCommissionDistribution:', error);
-        throw new Error(`Failed to distribute commission: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.error('❌ Error in triggerCommissionDistribution:', error);
+        // Don't throw - just log the error so the payment can still be recorded
+        console.error(`Failed to distribute commission for plot ${plotId}, but payment was recorded`);
     }
 }
 
