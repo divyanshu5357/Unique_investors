@@ -2,6 +2,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { BarChart } from "@/components/ui/charts";
 import { Download, User, Phone, MapPin, Mail, Globe } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useState, useEffect, useRef } from "react";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { WalletCard } from "@/components/broker/WalletCard";
+import { WelcomeSection } from "@/components/broker/WelcomeSection";
 import { getBrokerWallets, getBrokerProfile } from "@/lib/actions";
 import type { Wallet } from "@/lib/schema";
 import { Logo } from "@/components/Logo";
@@ -20,11 +22,15 @@ interface ProfileData {
   full_name: string | null;
   email: string | null;
   joining_date: string | null;
-  totalCommission: number;
+  totalcommission: number;
   sponsorName: string | null;
   mobile_number: string | null;
   address: string | null;
   verificationApproved: boolean;
+  verifications?: Array<{
+    status: 'pending' | 'approved' | 'rejected';
+    processed_date: string | null;
+  }>;
 }
 
 export default function BrokerDashboardPage() {
@@ -38,9 +44,9 @@ export default function BrokerDashboardPage() {
     const fetchProfileAndWallet = async () => {
       setLoading(true);
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { user } } = await supabase.auth.getUser();
       
-      if (session) {
+      if (user) {
         try {
           // Use server action to fetch profile data (bypasses RLS issues)
           const profileData = await getBrokerProfile();
@@ -49,13 +55,14 @@ export default function BrokerDashboardPage() {
             setProfile({
               id: profileData.id,
               full_name: profileData.full_name,
-              email: session.user.email || profileData.email || null,
-              joining_date: session.user.created_at,
-              totalCommission: profileData.totalCommission,
+              email: user.email || profileData.email || null,
+              joining_date: user.created_at,
+              totalcommission: profileData.totalcommission,
               sponsorName: profileData.sponsorName || 'N/A',
               mobile_number: profileData.mobile_number,
               address: profileData.address,
               verificationApproved: profileData.verificationApproved,
+              verifications: profileData.verifications,
             });
           }
 
@@ -122,21 +129,134 @@ export default function BrokerDashboardPage() {
 };
 
 
+  const [plotStats, setPlotStats] = useState<Array<{ month: string; count: number }>>([]);
+  const [loadingPlots, setLoadingPlots] = useState(true);
+
+  useEffect(() => {
+    const fetchPlotData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('plots')
+          .select('created_at')
+          .eq('broker_id', user.id)
+          .eq('status', 'sold');
+
+        if (error) throw error;
+
+        // Process data to count plots by month
+        const plotsByMonth = data.reduce((acc: { [key: string]: number }, plot) => {
+          const month = new Date(plot.created_at).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+          acc[month] = (acc[month] || 0) + 1;
+          return acc;
+        }, {});
+
+        // Convert to array and sort by date
+        const chartData = Object.entries(plotsByMonth)
+          .map(([month, count]) => ({ month, count }))
+          .sort((a, b) => {
+            const dateA = new Date(a.month);
+            const dateB = new Date(b.month);
+            return dateA.getTime() - dateB.getTime();
+          });
+
+        setPlotStats(chartData);
+      } catch (error) {
+        console.error('Error fetching plot data:', error);
+      } finally {
+        setLoadingPlots(false);
+      }
+    };
+
+    fetchPlotData();
+  }, []);
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
         <p className="text-muted-foreground">Welcome back, {profile?.full_name || 'Associate'}!</p>
       </div>
-      
+
       {loading ? (
         <div className="flex justify-center items-center min-h-[400px]">
           <Loader2 className="h-8 w-8 animate-spin"/>
         </div>
       ) : (
         <>
+          {/* Account Setup Progress */}
+          <WelcomeSection profile={profile} />
+
+          {/* Quick Stats */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-medium text-muted-foreground">Total Commission</h3>
+                  <p className="text-2xl font-bold">₹{profile?.totalcommission?.toLocaleString() || '0'}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-medium text-muted-foreground">Joining Date</h3>
+                  <p className="text-2xl font-bold">
+                    {profile?.joining_date 
+                      ? new Date(profile.joining_date).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })
+                      : 'N/A'
+                    }
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-medium text-muted-foreground">Sponsor</h3>
+                  <p className="text-2xl font-bold">{profile?.sponsorName || 'N/A'}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Wallet Summary */}
           <WalletCard wallet={wallet} />
+
+          {/* Plot Performance Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-headline">Plot Sales Performance</CardTitle>
+              <CardDescription>Your plot sales history by month</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {loadingPlots ? (
+                <div className="flex justify-center items-center h-[300px]">
+                  <Loader2 className="h-8 w-8 animate-spin"/>
+                </div>
+              ) : plotStats.length > 0 ? (
+                <BarChart
+                  data={plotStats}
+                  xField="month"
+                  yField="count"
+                  height={300}
+                  tooltipTitle="Plots Sold"
+                />
+              ) : (
+                <div className="flex justify-center items-center h-[300px] text-muted-foreground">
+                  No plot sales data available yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Welcome Letter Card */}
           <Card>

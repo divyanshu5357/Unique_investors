@@ -11,6 +11,7 @@ import { getBrokers, deleteBroker, getTransactions, getDownlineTreeForBroker } f
 import type { Broker } from "@/lib/types";
 import { ManageWalletDialog } from "@/components/admin/ManageWalletDialog";
 import { AddAssociateDialog } from "@/components/admin/AddAssociateDialog";
+import { ChangePasswordDialog } from "@/components/admin/ChangePasswordDialog";
 import { 
     Loader2, 
     Search, 
@@ -21,7 +22,8 @@ import {
     TrendingUp,
     Receipt,
     ArrowUpDown,
-    UserPlus
+    UserPlus,
+    Lock
 } from "lucide-react";
 import {
     Dialog,
@@ -71,6 +73,7 @@ export default function AssociatesPage() {
     const [isDownlineDialogOpen, setIsDownlineDialogOpen] = useState(false);
     const [isTransactionsDialogOpen, setIsTransactionsDialogOpen] = useState(false);
     const [isAddAssociateDialogOpen, setIsAddAssociateDialogOpen] = useState(false);
+    const [isChangePasswordDialogOpen, setIsChangePasswordDialogOpen] = useState(false);
     const [brokerToDelete, setBrokerToDelete] = useState<Broker | null>(null);
     const [downlineData, setDownlineData] = useState<DownlineTreeData | null>(null);
     const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
@@ -459,6 +462,17 @@ export default function AssociatesPage() {
                                                     </Button>
                                                     <Button
                                                         size="sm"
+                                                        variant="outline"
+                                                        onClick={() => {
+                                                            setSelectedBroker(broker);
+                                                            setIsChangePasswordDialogOpen(true);
+                                                        }}
+                                                        title="Change Password"
+                                                    >
+                                                        <Lock className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
                                                         variant="destructive"
                                                         onClick={() => handleDelete(broker)}
                                                         title="Delete Associate"
@@ -734,6 +748,17 @@ export default function AssociatesPage() {
                 onClose={() => setIsAddAssociateDialogOpen(false)}
                 onSuccess={fetchBrokers}
                 brokers={brokers}
+            />
+
+            {/* Change Password Dialog */}
+            <ChangePasswordDialog
+                isOpen={isChangePasswordDialogOpen}
+                onClose={() => {
+                    setIsChangePasswordDialogOpen(false);
+                    setSelectedBroker(null);
+                }}
+                brokerId={selectedBroker?.id || null}
+                brokerName={selectedBroker?.full_name || ''}
             />
         </div>
     );

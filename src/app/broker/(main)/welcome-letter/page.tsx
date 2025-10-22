@@ -1,25 +1,12 @@
 "use client"
 
-import React, { useState, useEffect, useTransition } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2, User, Mail, Phone, MapPin, Users, Globe } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-
-const welcomeSchema = z.object({
-    mobileNumber: z.string().min(10, "Mobile number must be at least 10 digits.").regex(/^[0-9+\-\s()]+$/, "Please enter a valid mobile number."),
-    address: z.string().min(10, "Address must be at least 10 characters."),
-});
-
-type WelcomeFormValues = z.infer<typeof welcomeSchema>;
 
 interface ProfileData {
     id: string;
@@ -38,17 +25,8 @@ interface ProfileData {
 export default function WelcomeLetterPage() {
     const supabase = createClient();
     const { toast } = useToast();
-    const [isPending, startTransition] = useTransition();
     const [loading, setLoading] = useState(true);
     const [profileData, setProfileData] = useState<ProfileData | null>(null);
-
-    const form = useForm<WelcomeFormValues>({
-        resolver: zodResolver(welcomeSchema),
-        defaultValues: {
-            mobileNumber: '',
-            address: '',
-        }
-    });
 
     useEffect(() => {
         fetchProfile();
@@ -67,8 +45,6 @@ export default function WelcomeLetterPage() {
                 return;
             }
 
-            console.log('Current user ID:', session.user.id); // Debug log
-
             // Fetch profile with upline information
             const { data: profile, error } = await supabase
                 .from('profiles')
@@ -86,8 +62,6 @@ export default function WelcomeLetterPage() {
                 `)
                 .eq('id', session.user.id)
                 .single();
-            
-            console.log('Fetched profile:', profile); // Debug log
 
             if (error) {
                 console.error("Error fetching profile:", error);
@@ -120,13 +94,6 @@ export default function WelcomeLetterPage() {
                 setProfileData(profileData);
             }
 
-            // Pre-fill form if data exists
-            if (profile.mobile_number || profile.address) {
-                form.reset({
-                    mobileNumber: profile.mobile_number || '',
-                    address: profile.address || '',
-                });
-            }
         } catch (error) {
             console.error("Error:", error);
             toast({
@@ -137,45 +104,6 @@ export default function WelcomeLetterPage() {
         } finally {
             setLoading(false);
         }
-    };
-
-    const handleSubmit = (values: WelcomeFormValues) => {
-        if (!profileData) return;
-
-        startTransition(async () => {
-            try {
-                const { error } = await supabase
-                    .from('profiles')
-                    .update({
-                        mobile_number: values.mobileNumber,
-                        address: values.address,
-                        profile_completed: true,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', profileData.id);
-
-                if (error) {
-                    toast({
-                        title: "Error",
-                        description: error.message,
-                        variant: "destructive"
-                    });
-                } else {
-                    toast({
-                        title: "Success",
-                        description: "Your profile has been updated successfully!",
-                    });
-                    // Refresh profile data
-                    await fetchProfile();
-                }
-            } catch (error) {
-                toast({
-                    title: "Error",
-                    description: (error as Error).message,
-                    variant: "destructive"
-                });
-            }
-        });
     };
 
     if (loading) {
@@ -193,8 +121,6 @@ export default function WelcomeLetterPage() {
             </div>
         );
     }
-
-    console.log('Profile Data:', profileData); // Debug log
 
     const today = new Date().toLocaleDateString('en-IN', {
         day: 'numeric',
@@ -325,102 +251,30 @@ export default function WelcomeLetterPage() {
                 </CardContent>
             </Card>
 
-            {/* Update Profile Form - Only if not completed */}
-            {!profileData.profile_completed && (
-                <Card className="border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/10">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <span className="text-yellow-600 dark:text-yellow-400">⚠️</span>
-                            Complete Your Profile
-                        </CardTitle>
-                        <CardDescription>
-                            Please update your mobile number and address. <strong>Note:</strong> You can only update these details once, so please ensure accuracy.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Form {...form}>
-                            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                                <FormField
-                                    control={form.control}
-                                    name="mobileNumber"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Mobile Number *</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    placeholder="e.g. +91 9876543210"
-                                                    {...field}
-                                                    disabled={!!profileData.mobile_number}
-                                                />
-                                            </FormControl>
-                                            <FormDescription>
-                                                {profileData.mobile_number 
-                                                    ? "Mobile number is locked and cannot be changed."
-                                                    : "Enter your mobile number (can only be set once)."
-                                                }
-                                            </FormDescription>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-
-                                <FormField
-                                    control={form.control}
-                                    name="address"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Address *</FormLabel>
-                                            <FormControl>
-                                                <Textarea
-                                                    placeholder="Enter your complete address"
-                                                    rows={4}
-                                                    {...field}
-                                                    disabled={!!profileData.address}
-                                                />
-                                            </FormControl>
-                                            <FormDescription>
-                                                {profileData.address 
-                                                    ? "Address is locked and cannot be changed."
-                                                    : "Enter your complete address (can only be set once)."
-                                                }
-                                            </FormDescription>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-
-                                {(!profileData.mobile_number || !profileData.address) && (
-                                    <div className="flex justify-end pt-4">
-                                        <Button 
-                                            type="submit" 
-                                            disabled={isPending || (!!profileData.mobile_number && !!profileData.address)}
-                                            size="lg"
-                                        >
-                                            {isPending ? (
-                                                <>
-                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    Saving...
-                                                </>
-                                            ) : (
-                                                "Save Profile Details"
-                                            )}
-                                        </Button>
-                                    </div>
-                                )}
-                            </form>
-                        </Form>
-                    </CardContent>
-                </Card>
-            )}
-
-            {profileData.profile_completed && (
+            {profileData.profile_completed ? (
                 <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/10">
                     <CardContent className="pt-6">
                         <div className="flex items-center gap-3">
                             <Badge className="bg-green-600 text-white">✓ Profile Complete</Badge>
                             <p className="text-sm text-muted-foreground">
-                                Your profile details have been saved. Name and Email are fixed. Mobile and Address cannot be changed.
+                                Your profile details have been saved. Visit the Account page to check or update your profile.
                             </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : (
+                <Card className="border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/10">
+                    <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                            <Badge className="bg-yellow-600 text-white">⚠️ Profile Incomplete</Badge>
+                            <p className="text-sm text-muted-foreground">
+                                Please complete your profile on the Account page to access all features.
+                            </p>
+                        </div>
+                        <div className="mt-4">
+                            <Button asChild>
+                                <a href="/broker/account">Complete Profile</a>
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>

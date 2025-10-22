@@ -1154,7 +1154,7 @@ export async function getBrokerProfile() {
 
     const { data: profile, error } = await supabaseAdmin
         .from('profiles')
-        .select('id, full_name, email, totalCommission, uplineId, mobile_number, address')
+        .select('id, full_name, email, totalcommission, uplineId, mobile_number, address')
         .eq('id', user.id)
         .single();
 
@@ -1174,23 +1174,27 @@ export async function getBrokerProfile() {
         sponsorName = sponsorData?.full_name || null;
     }
 
-    // Get verification status
+    // Get verification status with full details
     const { data: verificationData } = await supabaseAdmin
         .from('broker_verifications')
-        .select('status')
+        .select('*')
         .eq('broker_id', user.id)
-        .single();
+        .order('created_at', { ascending: false });
 
     return {
         id: profile.id,
         full_name: profile.full_name,
         email: profile.email,
-        totalCommission: profile.totalCommission || 0,
+        totalcommission: profile.totalcommission || 0,
         uplineId: profile.uplineId,
         mobile_number: profile.mobile_number,
         address: profile.address,
         sponsorName: sponsorName,
-        verificationApproved: verificationData?.status === 'approved',
+        verificationApproved: verificationData?.[0]?.status === 'approved',
+        verifications: verificationData?.map(v => ({
+            status: v.status,
+            processed_date: v.processed_at
+        })) || [],
     };
 }
 
@@ -2655,6 +2659,80 @@ export async function recalculateCommissionForPlot(plotId: string) {
             success: false,
             message: `Failed to recalculate commission: ${error instanceof Error ? error.message : 'Unknown error'}`
         };
+    }
+}
+
+/**
+ * Get all plots for public view
+ */
+export async function getPublicPlots(): Promise<Plot[]> {
+    try {
+        const supabaseAdmin = await getSupabaseAdminClient();
+        
+
+        // Get all plots (no booking_date column)
+        const { data: plots, error } = await supabaseAdmin
+            .from('plots')
+            .select(`
+                id,
+                project_name,
+                type,
+                block,
+                plot_number,
+                status,
+                dimension,
+                area,
+                buyer_name,
+                total_plot_amount,
+                buyer_phone,
+                buyer_email,
+                sale_date
+            `)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw new Error(`Failed to fetch plots: ${error.message}`);
+        }
+
+        if (!plots) return [];
+
+        // Get all payment_history for these plots (to find booking date)
+        const plotIds = plots.map(p => p.id);
+        let bookingDates: Record<string, string | null> = {};
+        if (plotIds.length > 0) {
+            const { data: payments, error: payErr } = await supabaseAdmin
+                .from('payment_history')
+                .select('plot_id, payment_date')
+                .in('plot_id', plotIds);
+            if (!payErr && payments) {
+                // Find earliest payment_date for each plot_id
+                for (const p of payments) {
+                    if (!bookingDates[p.plot_id] || new Date(p.payment_date) < new Date(bookingDates[p.plot_id]!)) {
+                        bookingDates[p.plot_id] = p.payment_date;
+                    }
+                }
+            }
+        }
+
+        return plots.map(plot => ({
+            id: plot.id,
+            projectName: plot.project_name,
+            type: plot.type || 'Residential',
+            block: plot.block || 'A',
+            plotNumber: plot.plot_number,
+            status: plot.status,
+            dimension: plot.dimension || `${Math.sqrt(plot.area || 1000).toFixed(0)}x${Math.sqrt(plot.area || 1000).toFixed(0)} ft`,
+            area: plot.area,
+            buyerName: plot.buyer_name,
+            buyerPhone: plot.buyer_phone,
+            buyerEmail: plot.buyer_email,
+            totalAmount: plot.total_plot_amount,
+            saleDate: plot.sale_date || null,
+            bookingDate: bookingDates[plot.id] || null
+        }));
+    } catch (error) {
+        console.error('Error in getPublicPlots:', error);
+        throw new Error(`Failed to get plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 

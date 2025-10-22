@@ -66,11 +66,12 @@ const PlotCard = ({ plot }: { plot: Plot }) => (
     </Dialog>
 );
 
-export function PlotExplorer({ allPlots }: { allPlots: Plot[] }) {
+export function PlotExplorer({ allPlots, onPlotClick }: { allPlots: Plot[], onPlotClick?: (plot: Plot) => void }) {
     const projectNames = useMemo(() => [...new Set(allPlots.map(p => p.projectName))].sort(), [allPlots]);
     
     const [selectedProject, setSelectedProject] = useState('');
-    const [selectedBlock, setSelectedBlock] = useState('All');
+    // use empty string to denote "no block selected" and show "Select" placeholder
+    const [selectedBlock, setSelectedBlock] = useState('');
 
     useEffect(() => {
         if (projectNames.length > 0 && !selectedProject) {
@@ -80,9 +81,10 @@ export function PlotExplorer({ allPlots }: { allPlots: Plot[] }) {
     
     const blocks = useMemo(() => {
         if (!selectedProject) return [];
-        const availableBlocks = ['All', ...[...new Set(allPlots.filter(p => p.projectName === selectedProject).map(p => p.block))].sort()];
-        if (!availableBlocks.includes(selectedBlock)) {
-            setSelectedBlock('All');
+        const availableBlocks = [...new Set(allPlots.filter(p => p.projectName === selectedProject).map(p => p.block))].sort();
+        // If currently selected block is not in available list, clear selection
+        if (selectedBlock && !availableBlocks.includes(selectedBlock)) {
+            setSelectedBlock('');
         }
         return availableBlocks;
     }, [allPlots, selectedProject, selectedBlock]);
@@ -92,7 +94,8 @@ export function PlotExplorer({ allPlots }: { allPlots: Plot[] }) {
         return allPlots
             .filter(plot =>
                 plot.projectName === selectedProject &&
-                (selectedBlock === 'All' || plot.block === selectedBlock)
+                // when selectedBlock is empty string, do not filter by block
+                (selectedBlock === '' || plot.block === selectedBlock)
             )
             .sort((a, b) => Number(a.plotNumber) - Number(b.plotNumber));
     }, [allPlots, selectedProject, selectedBlock]);
@@ -189,7 +192,22 @@ export function PlotExplorer({ allPlots }: { allPlots: Plot[] }) {
                         </CardHeader>
                         <CardContent>
                             <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-3">
-                                {filteredPlots.map(plot => <PlotCard key={plot.id} plot={plot} />)}
+                                {filteredPlots.map(plot => {
+                                    const isClickable = plot.status === 'booked' || plot.status === 'sold';
+                                    return (
+                                        <div 
+                                            key={plot.id} 
+                                            className={cn(
+                                                "p-2 border rounded-md text-center transition-colors",
+                                                statusConfig[plot.status].gridClass,
+                                                isClickable ? 'cursor-pointer' : 'cursor-default opacity-90'
+                                            )}
+                                            onClick={() => (onPlotClick && isClickable) ? onPlotClick(plot) : undefined}
+                                        >
+                                            <p className="font-medium">{plot.plotNumber}</p>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </CardContent>
                     </Card>

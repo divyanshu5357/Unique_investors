@@ -100,7 +100,8 @@ export default function PlotInventoryPage() {
 
     const [selectedProject, setSelectedProject] = useState('');
     const [selectedType, setSelectedType] = useState('');
-    const [selectedBlock, setSelectedBlock] = useState('All');
+    // use empty string to indicate no block selected and show 'Select Block' placeholder
+    const [selectedBlock, setSelectedBlock] = useState('');
     
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingPlot, setEditingPlot] = useState<Plot | null>(null);
@@ -162,9 +163,9 @@ export default function PlotInventoryPage() {
 
     const blocks = useMemo(() => {
         if (!selectedProject || !selectedType) return [];
-        const availableBlocks = ['All', ...[...new Set(allPlots.filter(p => p.projectName === selectedProject && p.type === selectedType).map(p => p.block))].sort()];
-        if (!availableBlocks.includes(selectedBlock)) {
-            setSelectedBlock('All');
+        const availableBlocks = [...new Set(allPlots.filter(p => p.projectName === selectedProject && p.type === selectedType).map(p => p.block))].sort();
+        if (selectedBlock && !availableBlocks.includes(selectedBlock)) {
+            setSelectedBlock('');
         }
         return availableBlocks;
     }, [allPlots, selectedProject, selectedType, selectedBlock]);
@@ -174,7 +175,7 @@ export default function PlotInventoryPage() {
             .filter(plot =>
                 plot.projectName === selectedProject &&
                 plot.type === selectedType &&
-                (selectedBlock === 'All' || plot.block === selectedBlock)
+                (selectedBlock === '' || plot.block === selectedBlock)
             )
             .sort((a, b) => Number(a.plotNumber) - Number(b.plotNumber));
     }, [allPlots, selectedProject, selectedType, selectedBlock]);

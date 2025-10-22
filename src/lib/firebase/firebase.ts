@@ -1,18 +1,8 @@
 
-import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import { getFirestore, Firestore } from "firebase/firestore";
-import { getAuth, Auth } from "firebase/auth";
-import { firebaseConfig } from "./firebaseConfig";
+// Firebase has been migrated to Supabase
+import { createClient } from '@supabase/supabase-js';
 
-// Client-side Firebase initialization
-let app: FirebaseApp;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApp();
-}
-
-const db: Firestore = getFirestore(app);
-const auth: Auth = getAuth(app);
-
-export { app, db, auth };
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);

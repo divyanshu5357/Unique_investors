@@ -8,7 +8,7 @@ import { MapPin, Phone, Mail, Facebook, Twitter, Instagram, Linkedin } from "luc
 const navItems = [
   { name: 'Home', href: '/' },
   { name: 'About', href: '/#about' },
-  { name: 'Explore Property', href: '/investor/dashboard' },
+  { name: 'Explore Property', href: '/explore' },
   { name: 'Contact', href: '/contact' },
   { name: 'Login', href: '/login' },
 ];

@@ -13,7 +13,13 @@ export const PlotSchema = z.object({
     dimension: z.string().min(1, 'Dimension is required'),
     area: z.coerce.number().positive('Area must be a positive number'),
     buyerName: z.string().optional().nullable(),
+    buyerPhone: z.string().optional().nullable(),
+    buyerEmail: z.string().optional().nullable(),
     salePrice: z.coerce.number().optional().nullable(),
+    totalAmount: z.coerce.number().optional().nullable(),
+    // Dates
+    saleDate: z.string().optional().nullable(),
+    bookingDate: z.string().optional().nullable(),
     commissionRate: z.coerce.number().optional().nullable(),
     // Admin-only fields
     brokerName: z.string().optional().nullable(),

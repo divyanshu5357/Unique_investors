@@ -16,6 +16,12 @@ export default function PublicHeader() {
           Home
         </Link>
         <Link
+          href="/explore"
+          className="text-sm font-medium hover:underline underline-offset-4"
+        >
+          Explore Properties
+        </Link>
+        <Link
           href="/#contact"
           className="text-sm font-medium hover:underline underline-offset-4"
         >
