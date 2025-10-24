@@ -34,19 +34,19 @@ const statusConfig = {
     },
 };
 
-const PlotCard = ({ plot }: { plot: Plot }) => (
+const PlotCard = ({ plot, displayNumber }: { plot: Plot; displayNumber: number }) => (
     <Dialog>
         <DialogTrigger asChild>
             <div className={cn(
                 "relative group flex items-center justify-center p-2 rounded-md border-2 font-bold cursor-pointer transition-colors",
                 statusConfig[plot.status].gridClass
             )}>
-                {plot.plotNumber}
+                {displayNumber}
             </div>
         </DialogTrigger>
         <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>Plot #{plot.plotNumber} Details</DialogTitle>
+                <DialogTitle>Plot #{displayNumber} Details</DialogTitle>
             </DialogHeader>
              <div className="flex flex-col space-y-3 text-sm py-4">
                 <div className="flex justify-between items-center">
@@ -191,23 +191,13 @@ export function PlotExplorer({ allPlots, onPlotClick }: { allPlots: Plot[], onPl
                             <CardDescription>Visual representation of the plot inventory for {selectedProject}. Click a plot to see details.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-3">
-                                {filteredPlots.map(plot => {
-                                    const isClickable = plot.status === 'booked' || plot.status === 'sold';
-                                    return (
-                                        <div 
-                                            key={plot.id} 
-                                            className={cn(
-                                                "p-2 border rounded-md text-center transition-colors",
-                                                statusConfig[plot.status].gridClass,
-                                                isClickable ? 'cursor-pointer' : 'cursor-default opacity-90'
-                                            )}
-                                            onClick={() => (onPlotClick && isClickable) ? onPlotClick(plot) : undefined}
-                                        >
-                                            <p className="font-medium">{plot.plotNumber}</p>
-                                        </div>
-                                    );
-                                })}
+                                                        <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-3">
+                                {filteredPlots.map((plot, index) => (
+                                    <PlotCard 
+                                        key={plot.id} 
+                                        plot={plot} 
+                                        displayNumber={index + 1} 
+                                    />))}
                             </div>
                         </CardContent>
                     </Card>
