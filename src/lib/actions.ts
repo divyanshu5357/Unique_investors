@@ -952,13 +952,16 @@ export async function createBroker(values: z.infer<typeof BrokerFormSchema> & Pa
         profile_completed: false,
     };
 
+    // Use upsert so this operation is idempotent: if the auth trigger already
+    // created a profile (or the profile exists for any reason), we won't fail
+    // here with a duplicate-key error.
     const { error: profileError } = await supabaseAdmin
         .from('profiles')
-        .insert(profileData);
+        .upsert(profileData, { onConflict: 'id' });
 
     if (profileError) {
         await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-        throw new Error(`User created but failed to create profile: ${profileError.message}. The operation has been rolled back.`);
+        throw new Error(`User created but failed to create/ensure profile: ${profileError.message}. The operation has been rolled back.`);
     }
     
     // Create wallet in Supabase (wallet will be auto-created by our trigger or when first accessed)
@@ -1065,12 +1068,13 @@ export async function getBrokers(): Promise<Broker[]> {
 export async function deleteBroker(userId: string) {
     await authorizeAdmin();
     const supabaseAdmin = await getSupabaseAdminClient();
-    
+
+    // Try to delete from Auth, but don't fail if user not found
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    if (authError) { 
+    if (authError && !authError.message.includes('User not found')) {
         throw new Error(`Failed to delete broker from authentication: ${authError.message}`);
     }
-    
+
     // Delete wallet from Supabase (will cascade delete due to foreign key constraint)
     const { error: walletError } = await supabaseAdmin
         .from('wallets')
@@ -1081,8 +1085,20 @@ export async function deleteBroker(userId: string) {
         console.log('Error deleting wallet (may not exist):', walletError.message);
         // Don't throw error as wallet deletion is not critical
     }
-    
+
+    // Delete broker profile from Supabase
+    const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .delete()
+        .eq('id', userId);
+
+    if (profileError) {
+        console.log('Error deleting profile (may not exist):', profileError.message);
+        // Don't throw error as profile deletion is not critical
+    }
+
     revalidatePath('/admin/brokers');
+    revalidatePath('/admin/associates');
     return { success: true };
 }
 

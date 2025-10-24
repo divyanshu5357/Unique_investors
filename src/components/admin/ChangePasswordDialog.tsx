@@ -6,7 +6,7 @@ import { AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { validatePassword } from "@/lib/utils/password-validation";
-import { updateUserPassword } from "@/lib/services/user-service";
+
 
 export function ChangePasswordDialog({
   isOpen,
@@ -66,17 +66,25 @@ export function ChangePasswordDialog({
 
     setIsLoading(true);
     try {
-      await updateUserPassword(brokerId, password);
+      const response = await fetch("/api/admin-update-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: brokerId, newPassword: password }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to update password");
+      }
       toast({
         title: "Password Updated",
         description: `Successfully updated password for ${brokerName}`,
       });
       handleClose();
-    } catch (error) {
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to update password. Please try again.",
+        description: error.message || "Failed to update password. Please try again.",
       });
     } finally {
       setIsLoading(false);

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client";
+import { getSupabaseAdminClient } from "@/lib/serverUtils";
 import { validatePassword } from "@/lib/utils/password-validation";
 
 export async function updateUserPassword(userId: string, newPassword: string) {
@@ -7,8 +7,8 @@ export async function updateUserPassword(userId: string, newPassword: string) {
         throw new Error(validation.errors[0]);
     }
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.admin.updateUserById(
+    const supabaseAdmin = await getSupabaseAdminClient();
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(
         userId,
         { password: newPassword }
     );

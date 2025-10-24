@@ -37,16 +37,18 @@ export const getSupabaseAdminClient = async () => {
 
 export async function getAuthenticatedUser(requiredRole?: 'admin' | 'broker') {
     const supabase = await getSupabaseAdminClient();
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError || !session) {
+    // Use getUser() which validates the user server-side with the Auth service
+    // (safer than trusting session data read from cookies).
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
         throw new Error("Not authenticated");
     }
 
     const { data: profile, error } = await supabase
         .from('profiles')
         .select('role')
-        .eq('id', session.user.id)
+        .eq('id', user.id)
         .single();
 
     if (error || !profile) {
@@ -61,7 +63,7 @@ export async function getAuthenticatedUser(requiredRole?: 'admin' | 'broker') {
         throw new Error("Unauthorized: User does not have a valid role.");
     }
 
-    return { user: session.user, role: profile.role };
+    return { user, role: profile.role };
 }
 
 export async function authorizeAdmin() {
