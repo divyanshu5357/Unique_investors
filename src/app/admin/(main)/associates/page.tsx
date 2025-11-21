@@ -82,40 +82,11 @@ export default function AssociatesPage() {
     const [sortField, setSortField] = useState<'name' | 'balance' | 'plots'>('name');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const [isPending, startTransition] = useTransition();
-    const [isRecalculating, setIsRecalculating] = useState(false);
+    // Recalculation state removed (manual recalculation disabled)
+    // const [isRecalculating, setIsRecalculating] = useState(false);
     const { toast } = useToast();
 
-    const handleRecalculateAllCommissions = async () => {
-        setIsRecalculating(true);
-        try {
-            const response = await fetch('/api/recalculate-commission');
-            const result = await response.json();
-            
-            if (result.success) {
-                toast({
-                    title: "Success",
-                    description: result.message || "Commissions recalculated successfully",
-                });
-                // Wait a moment for database to commit, then refresh
-                await new Promise(resolve => setTimeout(resolve, 500));
-                await fetchBrokers(); // Refresh the data
-            } else {
-                toast({
-                    title: "Error",
-                    description: result.message || "Failed to recalculate commissions",
-                    variant: "destructive"
-                });
-            }
-        } catch (error) {
-            toast({
-                title: "Error",
-                description: (error as Error).message || "Failed to recalculate commissions",
-                variant: "destructive"
-            });
-        } finally {
-            setIsRecalculating(false);
-        }
-    };
+    // Manual commission recalculation removed: commissions are now always calculated automatically
 
     const fetchBrokers = async () => {
         setLoading(true);
@@ -273,24 +244,7 @@ export default function AssociatesPage() {
                         <UserPlus className="mr-2 h-4 w-4" />
                         Add New Associate
                     </Button>
-                    <Button
-                        onClick={handleRecalculateAllCommissions}
-                        disabled={isRecalculating}
-                        variant="outline"
-                        size="sm"
-                    >
-                        {isRecalculating ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Recalculating...
-                            </>
-                        ) : (
-                            <>
-                                <TrendingUp className="mr-2 h-4 w-4" />
-                                Recalculate All Commissions
-                            </>
-                        )}
-                    </Button>
+                    {/* Recalculate button removed to enforce automatic commission logic */}
                 </div>
             </div>
 

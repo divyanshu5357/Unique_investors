@@ -116,6 +116,27 @@ export interface CommissionRecord {
     projectName?: string | null;
 }
 
+// Audit / History records
+export interface PlotHistoryRecord {
+    id: string;
+    plot_id: string;
+    action: string;
+    old_status?: string | null;
+    new_status?: string | null;
+    changed_by?: string | null;
+    details?: any;
+    created_at: string;
+}
+
+export interface BrokerHistoryRecord {
+    id: string;
+    broker_id: string;
+    action: string;
+    actor_id?: string | null;
+    details?: any;
+    occurred_at: string;
+}
+
 export const withdrawalSchema = z.object({
     amount: z.number().positive(),
     paymentMode: z.string(),

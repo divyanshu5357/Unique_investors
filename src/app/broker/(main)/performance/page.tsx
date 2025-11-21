@@ -1,12 +1,26 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useTransition } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp } from 'lucide-react';
+import { Loader2, TrendingUp, Download, ArrowRight } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { withdrawalRequestSchema } from '@/lib/schema';
+import { z } from 'zod';
+import { requestWithdrawal, getBrokerWallets } from '@/lib/actions';
+import type { Wallet } from '@/lib/schema';
+import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
+
+type WithdrawalFormValues = z.infer<typeof withdrawalRequestSchema>;
 
 interface Plot {
   id: string;
@@ -25,6 +39,18 @@ export default function BrokerPerformancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [brokerId, setBrokerId] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const { toast } = useToast();
+
+  const form = useForm<WithdrawalFormValues>({
+    resolver: zodResolver(withdrawalRequestSchema),
+    defaultValues: {
+      amount: 0,
+      note: '',
+    },
+  });
 
   useEffect(() => {
     // Fetch broker id from session/profile
@@ -38,16 +64,51 @@ export default function BrokerPerformancePage() {
   useEffect(() => {
     if (!brokerId) return;
     setLoading(true);
-    supabase
-      .from('plots')
-      .select('*')
-      .eq('broker_id', brokerId)
-      .then(({ data, error }) => {
-        if (error) setError(error.message);
-        else setPlots(data || []);
-        setLoading(false);
-      });
+    
+    Promise.all([
+      supabase
+        .from('plots')
+        .select('*')
+        .eq('broker_id', brokerId),
+      getBrokerWallets()
+    ])
+    .then(([plotsResult, walletData]) => {
+      if (plotsResult.error) {
+        setError(plotsResult.error.message);
+      } else {
+        setPlots(plotsResult.data || []);
+      }
+      setWallet(walletData);
+      setLoading(false);
+    })
+    .catch((err) => {
+      setError(err.message);
+      setLoading(false);
+    });
   }, [brokerId, supabase]);
+
+  const onWithdrawalSubmit = (values: WithdrawalFormValues) => {
+    startTransition(async () => {
+      try {
+        await requestWithdrawal(values);
+        toast({
+          title: 'Success!',
+          description: 'Withdrawal request submitted successfully. Admin will review your request.',
+        });
+        setIsWithdrawalDialogOpen(false);
+        form.reset();
+        // Refresh wallet data
+        const walletData = await getBrokerWallets();
+        setWallet(walletData);
+      } catch (error) {
+        toast({
+          title: 'Failed to submit withdrawal request',
+          description: (error as Error).message,
+          variant: 'destructive',
+        });
+      }
+    });
+  };
 
   if (loading) {
     return (
@@ -82,6 +143,12 @@ export default function BrokerPerformancePage() {
             Track your sales performance and commission status
           </p>
         </div>
+        <Link href="/broker/transactions">
+          <Button variant="outline" className="gap-2">
+            View All Transactions
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </Link>
       </div>
 
       {/* Stats Card */}
@@ -165,17 +232,98 @@ export default function BrokerPerformancePage() {
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            disabled={!canWithdraw}
-                            variant={canWithdraw ? 'default' : 'secondary'}
-                            onClick={() => {
-                              // TODO: Implement withdrawal request
-                              alert('Withdrawal request functionality coming soon!');
-                            }}
-                          >
-                            Withdraw
-                          </Button>
+                          <Dialog open={isWithdrawalDialogOpen} onOpenChange={(isOpen) => {
+                            setIsWithdrawalDialogOpen(isOpen);
+                            if (!isOpen) {
+                              form.reset();
+                            }
+                          }}>
+                            <Button
+                              size="sm"
+                              disabled={!canWithdraw || isPending}
+                              variant={canWithdraw ? 'default' : 'secondary'}
+                              onClick={() => setIsWithdrawalDialogOpen(true)}
+                            >
+                              <Download className="mr-1 h-3 w-3" />
+                              Withdraw
+                            </Button>
+                            
+                            <DialogContent className="sm:max-w-[425px] mx-4 sm:mx-0 max-h-[90vh] overflow-y-auto">
+                              <DialogHeader>
+                                <DialogTitle>Request Withdrawal</DialogTitle>
+                                <DialogDescription>
+                                  Request to withdraw commission from your available balance of ₹{wallet?.totalBalance.toLocaleString('en-IN') || '0'}
+                                </DialogDescription>
+                              </DialogHeader>
+                              <Form {...form}>
+                                <form onSubmit={form.handleSubmit(onWithdrawalSubmit)} className="space-y-4">
+                                  <FormField
+                                    control={form.control}
+                                    name="amount"
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>Amount (₹)</FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="Enter amount"
+                                            {...field}
+                                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          Available Balance: ₹{wallet?.totalBalance.toLocaleString('en-IN') || '0'}
+                                        </p>
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={form.control}
+                                    name="note"
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>Note (Optional)</FormLabel>
+                                        <FormControl>
+                                          <Textarea
+                                            placeholder="Add any notes or payment preferences..."
+                                            {...field}
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-md border border-blue-200 dark:border-blue-800">
+                                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                                      ℹ️ Your withdrawal request will be sent to admin for approval. Once approved, the amount will be transferred to your registered account.
+                                    </p>
+                                  </div>
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() => setIsWithdrawalDialogOpen(false)}
+                                      disabled={isPending}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button type="submit" disabled={isPending}>
+                                      {isPending ? (
+                                        <>
+                                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                          Submitting...
+                                        </>
+                                      ) : (
+                                        'Submit Request'
+                                      )}
+                                    </Button>
+                                  </div>
+                                </form>
+                              </Form>
+                            </DialogContent>
+                          </Dialog>
                         </TableCell>
                       </TableRow>
                     );

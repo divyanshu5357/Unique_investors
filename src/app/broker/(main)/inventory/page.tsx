@@ -41,14 +41,28 @@ const statusConfig = {
 const PlotCard = ({ plot, onEdit }: { plot: Plot; onEdit: () => void; }) => (
     <Dialog>
         <DialogTrigger asChild>
-            <div className={cn(
-                "relative group flex items-center justify-center p-2 rounded-md border-2 font-bold cursor-pointer transition-colors",
-                statusConfig[plot.status].gridClass
-            )}>
+            <div
+                className={cn(
+                    "relative group flex items-center justify-center p-2 rounded-md border-2 font-bold cursor-pointer transition-colors",
+                    statusConfig[plot.status].gridClass,
+                    plot.status === 'sold' && 'cursor-not-allowed opacity-80'
+                )}
+                onClick={(e) => {
+                    if (plot.status === 'sold') {
+                        e.preventDefault();
+                        toast({ title: 'Sold Plot', description: 'Sold plots cannot be edited.', variant: 'destructive' });
+                        return;
+                    }
+                }}
+            >
                 {plot.plotNumber}
-                 <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => {e.stopPropagation(); onEdit();}}><Pencil className="h-3 w-3" /></Button>
-                </div>
+                {plot.status !== 'sold' && (
+                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+                            <Pencil className="h-3 w-3" />
+                        </Button>
+                    </div>
+                )}
             </div>
         </DialogTrigger>
         <DialogContent className="sm:max-w-md">
@@ -164,6 +178,10 @@ export default function PlotInventoryPage() {
     }, [filteredPlots]);
 
     const handleEdit = (plot: Plot) => {
+        if (plot.status === 'sold') {
+            toast({ title: 'Sold Plot', description: 'Sold plots cannot be edited.', variant: 'destructive' });
+            return;
+        }
         setEditingPlot(plot);
         setIsFormOpen(true);
     };

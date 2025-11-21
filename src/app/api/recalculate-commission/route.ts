@@ -1,57 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { recalculateCommissionForPlot } from '@/lib/actions';
+// Manual recalculation disabled: route kept but returns 403 to preserve audit integrity
+// Original logic using recalculateCommissionForPlot removed.
 
-export async function POST(request: NextRequest) {
-    try {
-        const { plotId } = await request.json();
-        
-        if (!plotId) {
-            return NextResponse.json(
-                { error: 'Plot ID is required' },
-                { status: 400 }
-            );
-        }
-        
-        console.log(`🔄 API: Recalculating commission for plot: ${plotId}`);
-        
-        const result = await recalculateCommissionForPlot(plotId);
-        
-        if (result.success) {
-            return NextResponse.json({
-                success: true,
-                message: result.message,
-                data: result.result
-            });
-        } else {
-            return NextResponse.json(
-                { error: result.message },
-                { status: 400 }
-            );
-        }
-    } catch (error) {
-        console.error('❌ API Error recalculating commission:', error);
-        return NextResponse.json(
-            { error: (error as Error).message || 'Failed to recalculate commission' },
-            { status: 500 }
-        );
-    }
+export async function POST(_request: NextRequest) {
+    return NextResponse.json(
+        { error: 'Manual commission recalculation disabled. Commissions are calculated automatically.' },
+        { status: 403 }
+    );
 }
 
 // GET endpoint to recalculate ALL sold plots
 export async function GET() {
-    try {
-        const { calculateCommissionForSoldPlots } = await import('@/lib/actions');
-        
-        console.log('🔄 API: Recalculating commissions for all sold plots');
-        
-        const result = await calculateCommissionForSoldPlots();
-        
-        return NextResponse.json(result);
-    } catch (error) {
-        console.error('❌ API Error:', error);
-        return NextResponse.json(
-            { error: (error as Error).message || 'Failed to recalculate commissions' },
-            { status: 500 }
-        );
-    }
+    return NextResponse.json(
+        { error: 'Bulk commission recalculation disabled. System handles commission distribution automatically.' },
+        { status: 403 }
+    );
 }

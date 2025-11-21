@@ -7,6 +7,7 @@ import type { PlotFormValues } from '@/components/inventory/PlotForm';
 import { Plot, PlotSchema, Wallet, Transaction, WithdrawalRequest } from './schema';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { logger } from './utils/logger';
 import { 
     getSupabaseAdminClient, 
     getAuthenticatedUser, 
@@ -16,11 +17,11 @@ import {
     manageWalletSchema,
     BulkAddPlotsData
 } from './serverUtils';
-import { Broker, DownlineTreeData, TransactionRecord, WithdrawalRequestRecord, BrokerVerificationRecord } from './types';
+import { Broker, DownlineTreeData, TransactionRecord, WithdrawalRequestRecord, BrokerVerificationRecord, PlotHistoryRecord, BrokerHistoryRecord } from './types';
 import { withdrawalRequestSchema, processWithdrawalSchema, brokerVerificationSubmissionSchema, processVerificationSchema, brokerReferralSubmissionSchema, processReferralSchema } from './schema';
 
 export async function ensureUserProfile(userId: string, userMetadata?: any) {
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     // Check if profile already exists
     const { data: existingProfile, error: checkError } = await supabaseAdmin
@@ -61,7 +62,7 @@ export async function ensureUserProfile(userId: string, userMetadata?: any) {
 }
 
 export async function addPlot(data: PlotFormValues) {
-    console.log('🔵 addPlot called with data:', data);
+    logger.dev('🔵 addPlot called with data:', data);
     await authorizeAdmin();
 
     const plotNumber = Number(data.plotNumber);
@@ -74,7 +75,7 @@ export async function addPlot(data: PlotFormValues) {
     try {
         // Convert string numbers to actual numbers for numeric fields
         const processedData: any = { ...data };
-        console.log('🔵 processedData before conversion:', processedData);
+        logger.dev('🔵 processedData before conversion:', processedData);
         
         if (processedData.salePrice !== undefined) {
             processedData.salePrice = typeof processedData.salePrice === 'string' ? 
@@ -108,9 +109,9 @@ export async function addPlot(data: PlotFormValues) {
 
         // Get user for audit fields
         const { user } = await getAuthenticatedUser();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
 
-        console.log('🟢 processedData after conversion:', {
+        logger.dev('🟢 processedData after conversion:', {
             totalPlotAmount: processedData.totalPlotAmount,
             bookingAmount: processedData.bookingAmount,
             tenureMonths: processedData.tenureMonths,
@@ -151,7 +152,7 @@ export async function addPlot(data: PlotFormValues) {
             updated_by: processedData.brokerId || user.id
         };
 
-        console.log('🟡 plotData to be inserted:', {
+        logger.dev('🟡 plotData to be inserted:', {
             total_plot_amount: plotData.total_plot_amount,
             booking_amount: plotData.booking_amount,
             remaining_amount: plotData.remaining_amount,
@@ -193,7 +194,7 @@ export async function addPlot(data: PlotFormValues) {
         }
 
         // If plot is being created as booked, add initial booking payment to payment_history
-        console.log('💰 Checking if initial payment should be created:', {
+        logger.dev('💰 Checking if initial payment should be created:', {
             status: processedData.status,
             statusLower: processedData.status?.toLowerCase(),
             bookingAmount: processedData.bookingAmount,
@@ -201,7 +202,7 @@ export async function addPlot(data: PlotFormValues) {
         });
         
         if (processedData.status?.toLowerCase() === 'booked' && processedData.bookingAmount && processedData.bookingAmount > 0) {
-            console.log('💰 Creating initial payment_history entry:', {
+            logger.dev('💰 Creating initial payment_history entry:', {
                 plot_id: newPlot.id,
                 buyer_name: processedData.buyerName || 'N/A',
                 broker_id: processedData.brokerId || null,
@@ -223,11 +224,11 @@ export async function addPlot(data: PlotFormValues) {
                 .single();
             
             if (paymentError) {
-                console.error('❌ Error creating initial payment:', paymentError);
+                logger.error('❌ Error creating initial payment:', paymentError);
                 throw new Error(`Failed to create initial payment: ${paymentError.message}`);
             }
             
-            console.log('✅ Initial payment created:', paymentEntry);
+            logger.dev('✅ Initial payment created:', paymentEntry);
         }
         
         revalidatePath('/admin/inventory');
@@ -236,17 +237,17 @@ export async function addPlot(data: PlotFormValues) {
         revalidatePath('/admin/commissions');
         revalidatePath('/admin/booked-plots');
     } catch (error) {
-        console.error("Error adding plot:", error);
+        logger.error("Error adding plot:", error);
         throw error instanceof Error ? error : new Error("Failed to add plot due to a server error.");
     }
 }
 
 export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
-    console.log('🚀 updatePlot called with:', { id, data });
+    logger.dev('🚀 updatePlot called with:', { id, data });
     
     await authorizeAdmin();
     const { user } = await getAuthenticatedUser();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
     try {
         // Get the original plot
@@ -260,7 +261,7 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
             throw new Error("Plot not found.");
         }
         
-        console.log('📦 Original plot data:', originalPlot);
+        logger.dev('📦 Original plot data:', originalPlot);
 
         // Check for duplicates if plot number or project is being changed
         if (data.plotNumber || data.projectName) {
@@ -344,22 +345,29 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
 
         // Map form fields to Supabase columns
         if (processedData.projectName !== undefined) updateData.project_name = processedData.projectName;
+        if (processedData.type !== undefined) updateData.type = processedData.type;
+        if (processedData.block !== undefined) updateData.block = processedData.block;
         if (processedData.plotNumber !== undefined) updateData.plot_number = processedData.plotNumber.toString();
+        if (processedData.dimension !== undefined) updateData.dimension = processedData.dimension;
         if (processedData.area !== undefined) updateData.area = processedData.area;
         if (processedData.facing !== undefined) updateData.facing = processedData.facing;
         if (processedData.status !== undefined) updateData.status = processedData.status;
         if (processedData.price !== undefined) updateData.price = processedData.price;
         if (processedData.salePrice !== undefined) updateData.sale_price = processedData.salePrice;
-        if (processedData.buyerName !== undefined) updateData.buyer_name = processedData.buyerName;
-        if (processedData.buyerPhone !== undefined) updateData.buyer_phone = processedData.buyerPhone;
-        if (processedData.buyerEmail !== undefined) updateData.buyer_email = processedData.buyerEmail;
-        if (processedData.saleDate !== undefined) updateData.sale_date = processedData.saleDate;
+        if (processedData.buyerName !== undefined) updateData.buyer_name = processedData.buyerName || null;
+        if (processedData.buyerPhone !== undefined) updateData.buyer_phone = processedData.buyerPhone || null;
+        if (processedData.buyerEmail !== undefined) updateData.buyer_email = processedData.buyerEmail || null;
+        if (processedData.saleDate !== undefined) updateData.sale_date = processedData.saleDate || null;
+        if (processedData.soldAmount !== undefined) updateData.sold_amount = processedData.soldAmount;
+        if (processedData.commissionRate !== undefined) updateData.commission_rate = processedData.commissionRate;
+        if (processedData.sellerName !== undefined) updateData.seller_name = processedData.sellerName || null;
         // Booked plot fields
         if (processedData.totalPlotAmount !== undefined) updateData.total_plot_amount = processedData.totalPlotAmount;
         if (processedData.bookingAmount !== undefined) updateData.booking_amount = processedData.bookingAmount;
         if (processedData.tenureMonths !== undefined) updateData.tenure_months = processedData.tenureMonths;
-        if (processedData.brokerId !== undefined) updateData.broker_id = processedData.brokerId;
-        if (processedData.brokerName !== undefined) updateData.broker_name = processedData.brokerName;
+        // Convert empty string to null for UUID fields (Supabase requirement)
+        if (processedData.brokerId !== undefined) updateData.broker_id = processedData.brokerId || null;
+        if (processedData.brokerName !== undefined) updateData.broker_name = processedData.brokerName || null;
         // Calculate remaining amount and paid percentage for booked plots
         if (processedData.totalPlotAmount !== undefined && processedData.bookingAmount !== undefined) {
             updateData.remaining_amount = processedData.totalPlotAmount - processedData.bookingAmount;
@@ -368,9 +376,9 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
 
         // IMPORTANT: If plot is sold and brokerId is provided, use broker's ID as updated_by
         // This ensures the broker gets credit for the sale, not the admin who saved the form
-        if (processedData.status === 'sold' && processedData.brokerId) {
+        if (processedData.status === 'sold' && processedData.brokerId && processedData.brokerId.trim()) {
             updateData.updated_by = processedData.brokerId;
-            console.log(`🔄 Setting updated_by to broker: ${processedData.brokerId} (not admin: ${user.id})`);
+            logger.dev(`🔄 Setting updated_by to broker: ${processedData.brokerId} (not admin: ${user.id})`);
         }
 
         // Update the plot in Supabase
@@ -394,8 +402,8 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
         // Process commission calculation in the background (non-blocking)
         const actualSaleAmount = processedData.soldAmount || processedData.salePrice;
         
-        console.log('� PLOT UPDATE - Checking if commission calculation needed...');
-        console.log('�🔍 Commission Check:', {
+        logger.dev('� PLOT UPDATE - Checking if commission calculation needed...');
+        logger.dev('�🔍 Commission Check:', {
             isNowSold,
             isSoldStatusUpdate,
             brokerId: processedData.brokerId,
@@ -410,20 +418,33 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
             brokerChanged: data.brokerId !== originalPlot.updated_by
         });
         
-        // Simplified condition: if status is sold and we have the necessary data
+        // Detect transition away from sold (reversion) BEFORE any new commission logic
+        const isSoldToNonSold = originalPlot.status === 'sold' && processedData.status && processedData.status !== 'sold';
+        if (isSoldToNonSold) {
+            logger.dev('🔄 Plot status reverting from SOLD to non-sold state. Initiating commission reversal workflow...');
+            try {
+                await reversePlotFinancials(id, originalPlot);
+                logger.dev('✅ Commission reversal completed for plot reversion.');
+            } catch (revErr) {
+                logger.error('❌ Commission reversal failed:', revErr);
+            }
+        }
+
+        // Only calculate commissions on FIRST transition to sold (prevent duplicate or recalculation)
+        const isFirstSoldTransition = originalPlot.status !== 'sold' && processedData.status === 'sold';
         const shouldCalculateCommission = (
-            processedData.status === 'sold' && 
-            processedData.brokerId && 
-            actualSaleAmount && 
+            isFirstSoldTransition &&
+            processedData.brokerId &&
+            actualSaleAmount &&
             processedData.commissionRate &&
             actualSaleAmount > 0 &&
             processedData.commissionRate > 0
         );
 
-        console.log('🎯 Should calculate commission?', shouldCalculateCommission);
+        logger.dev('🎯 Should calculate commission?', shouldCalculateCommission, { isFirstSoldTransition });
         
         if (shouldCalculateCommission) {
-            console.log('✅ Processing commission calculation...');
+            logger.dev('✅ Processing commission calculation...');
             
             // Validate that we have valid numbers
             if (isNaN(actualSaleAmount) || actualSaleAmount <= 0) {
@@ -439,25 +460,32 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
                 ...processedData,
                 id: id
             }).then(() => {
-                console.log('✅ Commission calculation completed successfully');
+                logger.dev('✅ Commission calculation completed successfully');
                 // Revalidate again after commission processing
                 revalidatePath('/admin/commissions');
                 revalidatePath('/admin/brokers');
                 revalidatePath('/admin/associates');
                 revalidatePath('/broker/wallets');
             }).catch((error) => {
-                console.error('❌ Error in commission calculation:', error);
+                logger.error('❌ Error in commission calculation:', error);
                 // Don't throw - just log the error
             });
         } else {
-            console.log('❌ Commission calculation skipped because:');
-            if (!isSoldStatusUpdate) console.log('  - Plot status/broker info not being updated for commission calculation');
-            if (!processedData.brokerId) console.log('  - No broker ID provided');
-            if (!actualSaleAmount) console.log('  - No sale amount provided (checked both salePrice and soldAmount)');  
-            if (!processedData.commissionRate) console.log('  - No commission rate provided');
+            logger.dev('⏭️ Commission calculation skipped.', {
+                reason: !isFirstSoldTransition ? 'Not first sold transition (either already sold or not sold status)' : 'Missing data',
+                brokerId: processedData.brokerId,
+                actualSaleAmount,
+                commissionRate: processedData.commissionRate,
+                originalStatus: originalPlot.status,
+                newStatus: processedData.status
+            });
         }
     } catch (error) {
-        console.error("Error updating plot:", error);
+        logger.error("❌ Error updating plot:", error);
+        // Preserve the original error message if it's an Error object
+        if (error instanceof Error) {
+            throw error; // Re-throw the original error with its message
+        }
         throw new Error("Failed to update plot due to a server error.");
     }
 }
@@ -465,7 +493,7 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
 // Simple function to remove ALL duplicate plots - keep only unique project+plotNumber combinations
 export async function removeDuplicatePlots() {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     try {
         // Get all plots from Supabase
@@ -487,8 +515,8 @@ export async function removeDuplicatePlots() {
             };
         }
         
-        console.log(`\n=== DUPLICATE REMOVAL STARTED ===`);
-        console.log(`Total plots found: ${allPlots.length}`);
+        logger.dev(`\n=== DUPLICATE REMOVAL STARTED ===`);
+        logger.dev(`Total plots found: ${allPlots.length}`);
         
         const uniquePlots = new Map<string, string>(); // key -> plotId to keep
         const duplicatesToDelete: string[] = [];
@@ -497,7 +525,7 @@ export async function removeDuplicatePlots() {
             // Skip plots with missing critical data
             if (!plot.project_name || !plot.plot_number) {
                 duplicatesToDelete.push(plot.id);
-                console.log(`❌ Removing corrupt plot: ${plot.id} (missing project/plotNumber)`);
+                logger.dev(`❌ Removing corrupt plot: ${plot.id} (missing project/plotNumber)`);
                 return;
             }
             
@@ -507,17 +535,17 @@ export async function removeDuplicatePlots() {
             if (uniquePlots.has(uniqueKey)) {
                 // This is a duplicate - delete it
                 duplicatesToDelete.push(plot.id);
-                console.log(`🔄 Removing duplicate: Plot ${plot.plot_number} in ${plot.project_name} (ID: ${plot.id})`);
+                logger.dev(`🔄 Removing duplicate: Plot ${plot.plot_number} in ${plot.project_name} (ID: ${plot.id})`);
             } else {
                 // First occurrence - keep it
                 uniquePlots.set(uniqueKey, plot.id);
-                console.log(`✅ Keeping: Plot ${plot.plot_number} in ${plot.project_name} (ID: ${plot.id})`);
+                logger.dev(`✅ Keeping: Plot ${plot.plot_number} in ${plot.project_name} (ID: ${plot.id})`);
             }
         });
         
-        console.log(`\n📊 SUMMARY:`);
-        console.log(`- Unique plots to keep: ${uniquePlots.size}`);
-        console.log(`- Duplicates to remove: ${duplicatesToDelete.length}`);
+        logger.dev(`\n📊 SUMMARY:`);
+        logger.dev(`- Unique plots to keep: ${uniquePlots.size}`);
+        logger.dev(`- Duplicates to remove: ${duplicatesToDelete.length}`);
         
         // Delete all duplicates
         if (duplicatesToDelete.length > 0) {
@@ -530,7 +558,7 @@ export async function removeDuplicatePlots() {
                 throw new Error(`Failed to delete duplicates: ${deleteError.message}`);
             }
             
-            console.log(`✨ Successfully deleted ${duplicatesToDelete.length} duplicate plots`);
+            logger.dev(`✨ Successfully deleted ${duplicatesToDelete.length} duplicate plots`);
         }
         
         revalidatePath('/admin/inventory');
@@ -544,7 +572,7 @@ export async function removeDuplicatePlots() {
             message: `Removed ${duplicatesToDelete.length} duplicates. ${uniquePlots.size} unique plots remain.`
         };
     } catch (error) {
-        console.error("❌ Error removing duplicates:", error);
+        logger.error("❌ Error removing duplicates:", error);
         throw new Error("Failed to remove duplicate plots.");
     }
 }
@@ -552,7 +580,7 @@ export async function removeDuplicatePlots() {
 // Function to clean up corrupt/incomplete plot data
 export async function cleanupCorruptPlots() {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     try {
         // Get all plots from Supabase
@@ -579,7 +607,7 @@ export async function cleanupCorruptPlots() {
             // Check if essential fields are missing or undefined
             if (!plot.project_name || plot.plot_number === undefined || plot.plot_number === null) {
                 corruptPlots.push(plot.id);
-                console.log(`Found corrupt plot: ${plot.id}`, {
+                logger.dev(`Found corrupt plot: ${plot.id}`, {
                     projectName: plot.project_name,
                     plotNumber: plot.plot_number
                 });
@@ -597,7 +625,7 @@ export async function cleanupCorruptPlots() {
                 throw new Error(`Failed to delete corrupt plots: ${deleteError.message}`);
             }
             
-            console.log(`Successfully deleted ${corruptPlots.length} corrupt plots`);
+            logger.dev(`Successfully deleted ${corruptPlots.length} corrupt plots`);
         }
         
         revalidatePath('/admin/inventory');
@@ -612,7 +640,7 @@ export async function cleanupCorruptPlots() {
                 : `No corrupt plots found`
         };
     } catch (error) {
-        console.error("Error cleaning up corrupt plots:", error);
+        logger.error("Error cleaning up corrupt plots:", error);
         throw new Error("Failed to cleanup corrupt plots.");
     }
 }
@@ -620,7 +648,7 @@ export async function cleanupCorruptPlots() {
 // Function to analyze duplicates without deleting them
 export async function analyzeDuplicatePlots() {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     try {
         // Get all plots from Supabase
@@ -705,14 +733,14 @@ export async function analyzeDuplicatePlots() {
             totalProjectDuplicates: 0 // Simplified for Supabase structure
         };
     } catch (error) {
-        console.error("Error analyzing duplicate plots:", error);
+        logger.error("Error analyzing duplicate plots:", error);
         throw new Error("Failed to analyze duplicate plots.");
     }
 }
 
 export async function deletePlot(id: string) {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     try {
         // First, get the plot details to check if it was sold
@@ -728,7 +756,7 @@ export async function deletePlot(id: string) {
 
         // If plot was sold, we need to reverse commissions
         if (plot && plot.status === 'sold' && plot.broker_id) {
-            console.log('🗑️ Deleting sold plot, reversing commissions...');
+            logger.dev('🗑️ Deleting sold plot, reversing commissions...');
             
             // Get all transactions related to this plot
             const { data: plotTransactions, error: txError } = await supabaseAdmin
@@ -737,7 +765,7 @@ export async function deletePlot(id: string) {
                 .eq('plot_id', id);
 
             if (!txError && plotTransactions && plotTransactions.length > 0) {
-                console.log(`Found ${plotTransactions.length} transactions to reverse`);
+                logger.dev(`Found ${plotTransactions.length} transactions to reverse`);
                 
                 // Reverse wallet balances for each transaction
                 for (const tx of plotTransactions) {
@@ -767,7 +795,7 @@ export async function deletePlot(id: string) {
                                 .update(updates)
                                 .eq('owner_id', tx.wallet_id);
 
-                            console.log(`✅ Reversed ₹${tx.amount} from wallet (${tx.wallet_type})`);
+                            logger.dev(`✅ Reversed ₹${tx.amount} from wallet (${tx.wallet_type})`);
                         }
                     }
                 }
@@ -779,9 +807,9 @@ export async function deletePlot(id: string) {
                     .eq('plot_id', id);
 
                 if (deleteTxError) {
-                    console.error('Error deleting transactions:', deleteTxError);
+                    logger.error('Error deleting transactions:', deleteTxError);
                 } else {
-                    console.log('✅ Deleted all related transactions');
+                    logger.dev('✅ Deleted all related transactions');
                 }
             }
 
@@ -792,9 +820,9 @@ export async function deletePlot(id: string) {
                 .eq('plot_id', id);
 
             if (deleteCommError) {
-                console.error('Error deleting commissions:', deleteCommError);
+                logger.error('Error deleting commissions:', deleteCommError);
             } else {
-                console.log('✅ Deleted all related commissions');
+                logger.dev('✅ Deleted all related commissions');
             }
         }
 
@@ -808,14 +836,14 @@ export async function deletePlot(id: string) {
             throw new Error(`Failed to delete plot: ${error.message}`);
         }
 
-        console.log('✅ Plot deleted successfully');
+        logger.dev('✅ Plot deleted successfully');
 
         revalidatePath('/admin/inventory');
         revalidatePath('/broker/inventory');
         revalidatePath('/investor/dashboard');
         revalidatePath('/admin/associates');
     } catch (error) {
-        console.error("Error deleting plot: ", error);
+        logger.error("Error deleting plot: ", error);
         throw new Error("Could not delete the plot.");
     }
 }
@@ -823,7 +851,7 @@ export async function deletePlot(id: string) {
 export async function bulkAddPlots(data: BulkAddPlotsData) {
     await authorizeAdmin();
     const { user } = await getAuthenticatedUser();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
     // Check existing plot numbers for this project to avoid conflicts
     const { data: existingPlots, error: checkError } = await supabaseAdmin
@@ -890,14 +918,14 @@ export async function bulkAddPlots(data: BulkAddPlotsData) {
         revalidatePath('/investor/dashboard');
         return { success: true, count: data.totalPlots };
     } catch (error) {
-        console.error("Error during bulk add:", error);
+        logger.error("Error during bulk add:", error);
         throw new Error("Failed to generate plots due to a database error.");
     }
 }
 
 export async function createBroker(values: z.infer<typeof BrokerFormSchema> & Partial<import('./types').BrokerReferralRecord>) {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: values.email,
@@ -910,7 +938,7 @@ export async function createBroker(values: z.infer<typeof BrokerFormSchema> & Pa
     });
 
     if (authError) {
-        console.error("Supabase create user failed:", authError);
+        logger.error("Supabase create user failed:", authError);
         throw new Error(`Could not create broker user: ${authError.message}`);
     }
 
@@ -975,7 +1003,7 @@ export async function createBroker(values: z.infer<typeof BrokerFormSchema> & Pa
         });
 
     if (walletError) {
-        console.log('Wallet may already exist or will be created on first access:', walletError.message);
+        logger.dev('Wallet may already exist or will be created on first access:', walletError.message);
         // Don't throw error here as wallet creation is not critical
     }
 
@@ -986,12 +1014,14 @@ export async function createBroker(values: z.infer<typeof BrokerFormSchema> & Pa
 
 export async function getBrokers(): Promise<Broker[]> {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
+    // Exclude soft-deleted profiles (deleted_at IS NULL)
     const { data: profiles, error: profileError } = await supabaseAdmin
         .from('profiles')
-        .select('id, full_name, email')
-        .eq('role', 'broker');
+        .select('id, full_name, email, deleted_at')
+        .eq('role', 'broker')
+        .is('deleted_at', null);
 
     if (profileError) throw new Error(`Failed to fetch profiles: ${profileError.message}`);
     if (!profiles) return [];
@@ -1007,7 +1037,7 @@ export async function getBrokers(): Promise<Broker[]> {
         .in('owner_id', userIds.length > 0 ? userIds : ['dummy-id-to-prevent-error']);
 
     if (walletsError) {
-        console.log('Error fetching wallets:', walletsError.message);
+        logger.dev('Error fetching wallets:', walletsError.message);
     }
 
     const walletsMap = new Map(
@@ -1045,7 +1075,7 @@ export async function getBrokers(): Promise<Broker[]> {
             .or(`broker_id.eq.${broker.id},updated_by.eq.${broker.id}`);
 
         if (plotsError) {
-            console.log(`Error fetching plots for broker ${broker.id}:`, plotsError.message);
+            logger.dev(`Error fetching plots for broker ${broker.id}:`, plotsError.message);
         }
 
         const soldPlotsFormatted = (soldPlots || []).map(plot => ({
@@ -1066,45 +1096,141 @@ export async function getBrokers(): Promise<Broker[]> {
 }
 
 export async function deleteBroker(userId: string) {
-    await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    // Soft delete with business guard rules:
+    // 1. Broker must have zero direct + downline balance (wallet totals)
+    // 2. Broker must have no sold plots (direct sales) AND no downline members
+    // 3. Broker must have no commission transactions (credit type) remaining (defensive)
+    // Instead of hard-deleting, mark profile.deleted_at and nullify references using DB function safe_delete_profile.
 
-    // Try to delete from Auth, but don't fail if user not found
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    if (authError && !authError.message.includes('User not found')) {
-        throw new Error(`Failed to delete broker from authentication: ${authError.message}`);
+    await authorizeAdmin();
+    const supabaseAdmin = getSupabaseAdminClient();
+
+    // Fetch profile basic info
+    const { data: profile, error: profileFetchError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, full_name')
+        .eq('id', userId)
+        .single();
+    if (profileFetchError || !profile) {
+        throw new Error('Profile not found or could not be loaded.');
     }
 
-    // Delete wallet from Supabase (will cascade delete due to foreign key constraint)
-    const { error: walletError } = await supabaseAdmin
+    // Wallet balances
+    const { data: wallet, error: walletLoadError } = await supabaseAdmin
+        .from('wallets')
+        .select('direct_sale_balance, downline_sale_balance, total_balance')
+        .eq('owner_id', userId)
+        .single();
+    if (walletLoadError && walletLoadError.code !== 'PGRST116') { // PGRST116 no rows
+        throw new Error(`Could not load wallet: ${walletLoadError.message}`);
+    }
+
+    const directBalance = wallet?.direct_sale_balance ?? 0;
+    const downlineBalance = wallet?.downline_sale_balance ?? 0;
+    const totalBalance = wallet?.total_balance ?? (directBalance + downlineBalance);
+
+    if (directBalance !== 0 || downlineBalance !== 0 || totalBalance !== 0) {
+        throw new Error('Cannot delete: broker has non-zero wallet balances. Settle balances first.');
+    }
+
+    // Sold plots check
+    const { data: soldPlots, error: plotsError } = await supabaseAdmin
+        .from('plots')
+        .select('id')
+        .eq('status', 'sold')
+        .or(`broker_id.eq.${userId},updated_by.eq.${userId}`)
+        .limit(1);
+    if (plotsError) {
+        throw new Error(`Could not verify sold plots: ${plotsError.message}`);
+    }
+    if (soldPlots && soldPlots.length > 0) {
+        throw new Error('Cannot delete: broker has sold plots. Reassign or archive plots first.');
+    }
+
+    // Downline members (sponsored brokers)
+    const { data: downline, error: downlineError } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('sponsorid', userId)
+        .limit(1);
+    if (downlineError) {
+        throw new Error(`Could not verify downline: ${downlineError.message}`);
+    }
+    if (downline && downline.length > 0) {
+        throw new Error('Cannot delete: broker has downline members. Reassign or remove downline first.');
+    }
+
+    // Commission transactions (credit type referencing this broker's wallet)
+    const { data: commTx, error: commTxError } = await supabaseAdmin
+        .from('transactions')
+        .select('id')
+        .eq('wallet_id', userId)
+        .eq('type', 'commission')
+        .limit(1);
+    if (commTxError) {
+        throw new Error(`Could not verify commission transactions: ${commTxError.message}`);
+    }
+    if (commTx && commTx.length > 0) {
+        throw new Error('Cannot delete: broker has commission transactions. Reverse or archive commissions first.');
+    }
+
+    // At this point safe to soft-delete. Call DB function to nullify refs & mark deleted_at
+    const { error: softDeleteError } = await supabaseAdmin.rpc('safe_delete_profile', { p_profile_id: userId });
+    if (softDeleteError) {
+        throw new Error(`Soft delete failed: ${softDeleteError.message}`);
+    }
+
+    // Remove Auth user (optional; if you prefer keep for audit, skip)
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (authError && !authError.message.includes('User not found')) {
+        // Not fatal; log
+        logger.dev('Auth delete warning:', authError.message);
+    }
+
+    // Delete wallet row (optional) or leave for historical referencing; choose to delete since balances zero
+    const { error: walletDeleteError } = await supabaseAdmin
         .from('wallets')
         .delete()
         .eq('owner_id', userId);
-
-    if (walletError) {
-        console.log('Error deleting wallet (may not exist):', walletError.message);
-        // Don't throw error as wallet deletion is not critical
-    }
-
-    // Delete broker profile from Supabase
-    const { error: profileError } = await supabaseAdmin
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
-
-    if (profileError) {
-        console.log('Error deleting profile (may not exist):', profileError.message);
-        // Don't throw error as profile deletion is not critical
+    if (walletDeleteError && walletDeleteError.code !== 'PGRST116') {
+        logger.dev('Wallet delete warning:', walletDeleteError.message);
     }
 
     revalidatePath('/admin/brokers');
     revalidatePath('/admin/associates');
-    return { success: true };
+    return { success: true, deleted: true };
 }
 
 export async function getDownlineTreeForBroker(brokerId: string): Promise<DownlineTreeData | null> {
     await authorizeAdmin(); 
     return buildDownlineTree(brokerId);
+}
+
+// ==========================
+// AUDIT / HISTORY FUNCTIONS
+// ==========================
+export async function getPlotHistory(options: { plotId?: string; action?: string; limit?: number } = {}): Promise<PlotHistoryRecord[]> {
+    await authorizeAdmin();
+    const supabaseAdmin = getSupabaseAdminClient();
+    let query = supabaseAdmin.from('plot_history').select('*').order('created_at', { ascending: false });
+    if (options.plotId) query = query.eq('plot_id', options.plotId);
+    if (options.action) query = query.eq('action', options.action);
+    if (options.limit) query = query.limit(options.limit);
+    const { data, error } = await query;
+    if (error) throw new Error(`Failed to fetch plot history: ${error.message}`);
+    return (data || []) as PlotHistoryRecord[];
+}
+
+export async function getBrokerHistory(options: { brokerId?: string; action?: string; limit?: number } = {}): Promise<BrokerHistoryRecord[]> {
+    await authorizeAdmin();
+    const supabaseAdmin = getSupabaseAdminClient();
+    let query = supabaseAdmin.from('broker_history').select('*').order('occurred_at', { ascending: false });
+    if (options.brokerId) query = query.eq('broker_id', options.brokerId);
+    if (options.action) query = query.eq('action', options.action);
+    if (options.limit) query = query.limit(options.limit);
+    const { data, error } = await query;
+    if (error) throw new Error(`Failed to fetch broker history: ${error.message}`);
+    return (data || []) as BrokerHistoryRecord[];
 }
 
 export async function getMyDownlineTree(): Promise<DownlineTreeData | null> {
@@ -1114,7 +1240,7 @@ export async function getMyDownlineTree(): Promise<DownlineTreeData | null> {
 
 export async function getBrokerWallets(): Promise<Wallet | null> {
     const { user } = await getAuthenticatedUser('broker');
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
     // Try to get existing wallet
     const { data: wallet, error } = await supabaseAdmin
@@ -1128,7 +1254,7 @@ export async function getBrokerWallets(): Promise<Wallet | null> {
     }
 
     if (!wallet) {
-        console.log(`No wallet found for broker ${user.id}, creating one.`);
+        logger.dev(`No wallet found for broker ${user.id}, creating one.`);
         
         // Create new wallet
         const { data: newWallet, error: createError } = await supabaseAdmin
@@ -1166,7 +1292,7 @@ export async function getBrokerWallets(): Promise<Wallet | null> {
 
 export async function getBrokerProfile() {
     const { user } = await getAuthenticatedUser('broker');
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
     const { data: profile, error } = await supabaseAdmin
         .from('profiles')
@@ -1175,7 +1301,7 @@ export async function getBrokerProfile() {
         .single();
 
     if (error) {
-        console.error('Error fetching broker profile:', error);
+        logger.error('Error fetching broker profile:', error);
         return null;
     }
 
@@ -1217,7 +1343,7 @@ export async function getBrokerProfile() {
 export async function getTransactions(userId: string): Promise<Transaction[]> {
     // Allow both admin and broker to fetch transactions
     const { user } = await getAuthenticatedUser();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
     // Check if user is admin or the broker themselves
     const { data: profile } = await supabaseAdmin
@@ -1264,12 +1390,12 @@ export async function requestWithdrawal(values: z.infer<typeof withdrawalRequest
     const { user } = await getAuthenticatedUser('broker');
     
     const wallet = await getBrokerWallets();
-    if (!wallet || wallet.totalBalance < values.amount) {
-        throw new Error("Insufficient balance for this withdrawal request.");
+    if (!wallet) {
+        throw new Error("Wallet not found");
     }
 
     // Get broker profile info
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data: profile } = await supabaseAdmin
         .from('profiles')
         .select('full_name, email')
@@ -1278,6 +1404,37 @@ export async function requestWithdrawal(values: z.infer<typeof withdrawalRequest
 
     if (!profile) {
         throw new Error("Broker profile not found");
+    }
+
+    // Check for pending withdrawal requests
+    const { data: pendingWithdrawals, error: pendingError } = await supabaseAdmin
+        .from('withdrawal_requests')
+        .select('amount')
+        .eq('broker_id', user.id)
+        .eq('status', 'pending');
+
+    if (pendingError) {
+        throw new Error(`Failed to check pending withdrawals: ${pendingError.message}`);
+    }
+
+    // Calculate total pending withdrawals
+    const totalPending = (pendingWithdrawals || []).reduce((sum, w) => sum + w.amount, 0);
+    
+    // Calculate available balance (total - pending withdrawals)
+    const availableBalance = wallet.totalBalance - totalPending;
+    
+    logger.dev('Withdrawal validation:', {
+        totalBalance: wallet.totalBalance,
+        totalPending,
+        availableBalance,
+        requestedAmount: values.amount
+    });
+
+    if (availableBalance < values.amount) {
+        throw new Error(
+            `Insufficient available balance. Available: ₹${availableBalance.toFixed(2)} ` +
+            `(Total: ₹${wallet.totalBalance.toFixed(2)}, Pending: ₹${totalPending.toFixed(2)})`
+        );
     }
     
     const { data: newRequest, error } = await supabaseAdmin
@@ -1314,7 +1471,7 @@ export async function getBrokerTransactions(brokerId?: string): Promise<Transact
     const targetBrokerId = brokerId || user.id;
     
     // If not admin and trying to access another broker's data, deny
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data: profile } = await supabaseAdmin
         .from('profiles')
         .select('role')
@@ -1332,7 +1489,7 @@ export async function getBrokerTransactions(brokerId?: string): Promise<Transact
         .order('created_at', { ascending: false });
 
     if (error) {
-        console.error("Error fetching transactions:", error);
+        logger.error("Error fetching transactions:", error);
         throw new Error(`Failed to fetch transactions: ${error.message}`);
     }
 
@@ -1369,7 +1526,7 @@ export async function getBrokerWithdrawalRequests(brokerId?: string): Promise<Wi
     const targetBrokerId = brokerId || user.id;
     
     // If not admin and trying to access another broker's data, deny
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data: profile } = await supabaseAdmin
         .from('profiles')
         .select('role')
@@ -1411,7 +1568,7 @@ export async function getBrokerWithdrawalRequests(brokerId?: string): Promise<Wi
 
 export async function getAllWithdrawalRequests(): Promise<WithdrawalRequestRecord[]> {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     const { data: withdrawals, error } = await supabaseAdmin
         .from('withdrawal_requests')
@@ -1444,7 +1601,7 @@ export async function getAllWithdrawalRequests(): Promise<WithdrawalRequestRecor
 export async function processWithdrawalRequest(values: z.infer<typeof processWithdrawalSchema>) {
     const { user } = await getAuthenticatedUser('admin');
     const { requestId, action, paymentType, proofImageUrl, rejectionReason } = values;
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
 
     // Get withdrawal request from Supabase
     const { data: withdrawalData, error: fetchError } = await supabaseAdmin
@@ -1474,24 +1631,61 @@ export async function processWithdrawalRequest(values: z.infer<typeof processWit
         updateData.payment_type = paymentType;
         updateData.proof_image_url = proofImageUrl || null;
 
-        // Deduct amount from broker's wallet in Supabase using RPC
-        const { error: walletError } = await supabaseAdmin.rpc('update_wallet_balance_withdrawal', {
-            wallet_owner_id: withdrawalData.broker_id,
-            withdrawal_amount: withdrawalData.amount
-        });
-
-        if (walletError) {
-            throw new Error(`Failed to update wallet: ${walletError.message}`);
+        // Fetch broker wallet to validate sufficient balance
+        const { data: wallet, error: walletFetchErr } = await supabaseAdmin
+            .from('wallets')
+            .select('owner_id, direct_sale_balance, downline_sale_balance, total_balance')
+            .eq('owner_id', withdrawalData.broker_id)
+            .single();
+        if (walletFetchErr || !wallet) {
+            throw new Error('Broker wallet not found');
+        }
+        const amount = withdrawalData.amount;
+        if (amount <= 0) throw new Error('Invalid withdrawal amount');
+        if ((wallet.total_balance || 0) < amount) {
+            throw new Error('Insufficient total balance');
+        }
+        // Prefer deducting from direct balance first, then downline balance
+        let remaining = amount;
+        let newDirect = wallet.direct_sale_balance || 0;
+        let newDownline = wallet.downline_sale_balance || 0;
+        if (newDirect >= remaining) {
+            newDirect -= remaining;
+            remaining = 0;
+        } else {
+            remaining -= newDirect;
+            newDirect = 0;
+            if (newDownline >= remaining) {
+                newDownline -= remaining;
+                remaining = 0;
+            } else {
+                throw new Error('Insufficient combined balance');
+            }
+        }
+        const newTotal = (wallet.total_balance || 0) - amount;
+        const { error: walletUpdateErr } = await supabaseAdmin
+            .from('wallets')
+            .update({
+                direct_sale_balance: newDirect,
+                downline_sale_balance: newDownline,
+                total_balance: newTotal,
+                updated_at: new Date().toISOString()
+            })
+            .eq('owner_id', withdrawalData.broker_id);
+        if (walletUpdateErr) {
+            throw new Error(`Failed to update wallet balance: ${walletUpdateErr.message}`);
         }
 
-        // Add withdrawal transaction record in Supabase
+        // Record debit transaction (withdrawal)
         const { error: transactionError } = await supabaseAdmin
             .from('transactions')
             .insert({
-                user_id: withdrawalData.broker_id,
-                type: 'withdrawal',
-                amount: withdrawalData.amount,
+                wallet_id: withdrawalData.broker_id,
+                wallet_type: 'direct',
+                type: 'debit',
+                amount: amount,
                 description: `Withdrawal approved - ${paymentType}`,
+                status: 'completed',
                 reference_id: requestId,
             });
 
@@ -1522,7 +1716,7 @@ export async function processWithdrawalRequest(values: z.infer<typeof processWit
 // Broker Verification Actions
 export async function submitBrokerVerification(values: z.infer<typeof brokerVerificationSubmissionSchema>) {
     const { user } = await getAuthenticatedUser('broker');
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     // Check if broker already has a pending or approved verification
     const { data: existingVerification, error: checkError } = await supabaseAdmin
@@ -1560,7 +1754,7 @@ export async function submitBrokerVerification(values: z.infer<typeof brokerVeri
         profile_completed: true,
     };
     
-    console.log('Attempting to update profile with:', updateData);
+    logger.dev('Attempting to update profile with:', updateData);
     
     const { data: updatedProfile, error: updateError } = await supabaseAdmin
         .from('profiles')
@@ -1569,11 +1763,11 @@ export async function submitBrokerVerification(values: z.infer<typeof brokerVeri
         .select();
 
     if (updateError) {
-        console.error('Error updating profile:', updateError);
+        logger.error('Error updating profile:', updateError);
         throw new Error(`Failed to update profile: ${updateError.message}`);
     }
     
-    console.log('Profile updated successfully:', updatedProfile);
+    logger.dev('Profile updated successfully:', updatedProfile);
     
     const { error: insertError } = await supabaseAdmin
         .from('broker_verifications')
@@ -1613,7 +1807,7 @@ export async function getBrokerVerificationStatus(brokerId?: string): Promise<Br
     const targetBrokerId = brokerId || user.id;
     
     // If not admin and trying to access another broker's data, deny
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data: profile } = await supabaseAdmin
         .from('profiles')
         .select('role')
@@ -1660,7 +1854,7 @@ export async function getBrokerVerificationStatus(brokerId?: string): Promise<Br
 
 export async function getAllBrokerVerifications(): Promise<BrokerVerificationRecord[]> {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     const { data: verifications, error } = await supabaseAdmin
         .from('broker_verifications')
@@ -1692,7 +1886,7 @@ export async function getAllBrokerVerifications(): Promise<BrokerVerificationRec
 
 export async function processVerificationRequest(values: z.infer<typeof processVerificationSchema>) {
     const { user } = await getAuthenticatedUser('admin');
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { verificationId, action, rejectionReason } = values;
 
     // Check if verification exists and is pending
@@ -1738,7 +1932,7 @@ export async function processVerificationRequest(values: z.infer<typeof processV
 
 export async function manageBrokerWallet(values: z.infer<typeof manageWalletSchema>) {
     await authorizeAdmin();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { brokerId, type, amount, walletType, description, paymentMode, transactionId } = values;
 
     const increment = type === 'credit' ? amount : -amount;
@@ -1777,7 +1971,7 @@ export async function manageBrokerWallet(values: z.infer<typeof manageWalletSche
         revalidatePath('/broker/dashboard');
         revalidatePath('/broker/wallets');
     } catch (error) {
-        console.error("Error managing wallet:", error);
+        logger.error("Error managing wallet:", error);
         throw new Error("Failed to process wallet transaction.");
     }
 }
@@ -1800,7 +1994,7 @@ export async function updateCommission(plotId: string, commissionRate: number, s
 
         // Authorize admin access
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
 
         // Get current plot data from Supabase
         const { data: existingPlot, error: fetchError } = await supabaseAdmin
@@ -1837,7 +2031,7 @@ export async function updateCommission(plotId: string, commissionRate: number, s
         };
 
     } catch (error) {
-        console.error("Error updating commission:", error);
+        logger.error("Error updating commission:", error);
         if (error instanceof z.ZodError) {
             throw new Error(`Validation error: ${error.errors.map(e => e.message).join(', ')}`);
         }
@@ -1860,7 +2054,7 @@ export async function submitBrokerReferral(formData: {
     
     try {
         // Check if email is already registered
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         const { data: existingUser } = await supabaseAdmin
             .from('profiles')
             .select('id')
@@ -1924,7 +2118,7 @@ export async function submitBrokerReferral(formData: {
         };
         
     } catch (error) {
-        console.error('Error submitting referral:', error);
+        logger.error('Error submitting referral:', error);
         if (error instanceof z.ZodError) {
             throw new Error(`Validation error: ${error.errors.map(e => e.message).join(', ')}`);
         }
@@ -1934,7 +2128,7 @@ export async function submitBrokerReferral(formData: {
 
 export async function getBrokerReferrals(brokerId?: string) {
     const user = await getAuthenticatedUser();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     try {
         let query = supabaseAdmin.from('broker_referrals').select('*');
@@ -1972,7 +2166,7 @@ export async function getBrokerReferrals(brokerId?: string) {
         return mappedReferrals;
         
     } catch (error) {
-        console.error('Error fetching referrals:', error);
+        logger.error('Error fetching referrals:', error);
         // Return empty array instead of throwing error to prevent UI crashes
         return [];
     }
@@ -1996,7 +2190,7 @@ export async function processReferralRequest(formData: {
     const validatedData = processReferralSchema.parse(formData);
     
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: referralData, error: fetchError } = await supabaseAdmin
             .from('broker_referrals')
@@ -2117,7 +2311,7 @@ export async function processReferralRequest(formData: {
         }
         
     } catch (error) {
-        console.error('Error processing referral:', error);
+        logger.error('Error processing referral:', error);
         if (error instanceof z.ZodError) {
             throw new Error(`Validation error: ${error.errors.map(e => e.message).join(', ')}`);
         }
@@ -2127,7 +2321,12 @@ export async function processReferralRequest(formData: {
 
 // ========== COMMISSION DISTRIBUTION ACTIONS ==========
 
-export async function processCommissionCalculation(sellerId: string, saleAmount: number, plotData?: any) {
+export async function processCommissionCalculation(
+    sellerId: string, 
+    saleAmount: number, 
+    plotData?: any,
+    preservedTimestamps?: Map<string, string> // Optional: Map of receiver_level -> original timestamp
+) {
     try {
         // Validate inputs
         if (!sellerId || typeof sellerId !== 'string') {
@@ -2137,10 +2336,33 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
             throw new Error('Invalid sale amount provided. Must be a positive number.');
         }
 
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
+        
+        // IMPORTANT: Check if commission already exists for this plot to prevent duplicates
+        // Skip this check if we're recalculating (preservedTimestamps provided)
+        if (plotData?.id && !preservedTimestamps) {
+            const { data: existingCommissions, error: checkError } = await supabaseAdmin
+                .from('commissions')
+                .select('id')
+                .eq('plot_id', plotData.id)
+                .eq('seller_id', sellerId)
+                .limit(1);
+            
+            if (checkError) {
+                logger.error('Error checking for existing commissions:', checkError);
+            } else if (existingCommissions && existingCommissions.length > 0) {
+                logger.dev(`⏭️  Commission already exists for plot ${plotData.plotNumber} - skipping duplicate calculation`);
+                return {
+                    success: true,
+                    message: 'Commission already calculated for this plot',
+                    commissionsGenerated: 0,
+                    totalDistributed: 0
+                };
+            }
+        }
         
         // Get seller profile
-        console.log('Looking for seller profile with ID:', sellerId);
+        logger.dev('Looking for seller profile with ID:', sellerId);
         
         // Try to fetch profile with uplineId, fall back to basic profile if uplineId doesn't exist
         let sellerProfile;
@@ -2156,7 +2378,7 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
             profileError = error;
         } catch (err) {
             // If uplineId column doesn't exist, try without it
-            console.log('uplineId column not found, trying without it...');
+            logger.dev('uplineId column not found, trying without it...');
             const { data, error } = await supabaseAdmin
                 .from('profiles')
                 .select('full_name, role')
@@ -2167,16 +2389,16 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
         }
             
         if (profileError || !sellerProfile) {
-            console.error('Error fetching seller profile:', profileError);
+            logger.error('Error fetching seller profile:', profileError);
             throw new Error(`Seller profile not found for ID: ${sellerId}. Please ensure the broker exists in the system.`);
         }
             
         if (!sellerProfile) {
-            console.error('No seller profile found for ID:', sellerId);
+            logger.error('No seller profile found for ID:', sellerId);
             throw new Error(`Seller profile not found for ID: ${sellerId}. Please ensure the broker exists in the system.`);
         }
         
-        console.log('Found seller profile:', { 
+        logger.dev('Found seller profile:', { 
             name: sellerProfile.full_name, 
             role: sellerProfile.role, 
             hasUpline: !!(sellerProfile as any).uplineId 
@@ -2188,7 +2410,7 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
         
         // If no upline system is set up, just process direct commission for the seller
         if (!currentUplineId) {
-            console.log('No upline structure found, processing only direct commission for seller.');
+            logger.dev('No upline structure found, processing only direct commission for seller.');
         }
         
         // Commission percentages for each level
@@ -2204,7 +2426,7 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
         const plotCommissionRate = plotData?.commissionRate || commissionRates.direct;
         const sellerDirectCommission = (saleAmount * plotCommissionRate) / 100;
         
-        console.log(`💰 Calculating seller commission: ${saleAmount} × ${plotCommissionRate}% = ₹${sellerDirectCommission}`);
+        logger.dev(`💰 Calculating seller commission: ${saleAmount} × ${plotCommissionRate}% = ₹${sellerDirectCommission}`);
         
         // Use RPC function to update or create seller's wallet with full plot details
         const { error: sellerWalletError } = await supabaseAdmin.rpc('upsert_seller_commission', {
@@ -2216,8 +2438,8 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
         });
 
         if (sellerWalletError) {
-            console.error('Failed to update seller wallet via RPC:', sellerWalletError.message);
-            console.log('Trying direct wallet update...');
+            logger.error('Failed to update seller wallet via RPC:', sellerWalletError.message);
+            logger.dev('Trying direct wallet update...');
             
             // Fallback: Get existing wallet and increment
             const { data: existingWallet } = await supabaseAdmin
@@ -2245,30 +2467,90 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
             if (upsertError) {
                 throw new Error(`Failed to update seller wallet: ${upsertError.message}`);
             }
-            console.log(`✅ Updated wallet for seller: ${sellerId} - Added ₹${sellerDirectCommission}`);
+            logger.dev(`✅ Updated wallet for seller: ${sellerId} - Added ₹${sellerDirectCommission}`);
         } else {
-            console.log(`✅ Seller wallet updated via RPC - Added ₹${sellerDirectCommission}`);
+            logger.dev(`✅ Seller wallet updated via RPC - Added ₹${sellerDirectCommission}`);
         }
 
         // Create transaction record for seller's direct commission
-        const { error: sellerTransactionError } = await supabaseAdmin
-            .from('transactions')
-            .insert({
-                wallet_id: sellerId,
-                wallet_type: 'direct',
-                type: 'credit',
-                amount: sellerDirectCommission,
-                description: `Direct commission from plot sale (${plotCommissionRate}%)`,
-                status: 'completed',
-                plot_id: plotData?.id || null,
-                project_name: plotData?.projectName || null,
-            });
-            
-        if (sellerTransactionError) {
-            console.error('Transaction creation failed:', sellerTransactionError.message);
-            // Don't throw error, just log it
+        // Preserve timestamp if this is a recalculation (level 1 is direct sale)
+        const sellerTimestampKey = `${sellerId}_1`;
+        const preservedSellerTimestamp = preservedTimestamps?.get(sellerTimestampKey);
+        
+        const sellerTransactionData: any = {
+            wallet_id: sellerId,
+            wallet_type: 'direct',
+            type: 'credit',
+            amount: sellerDirectCommission,
+            description: `Direct commission from plot sale (${plotCommissionRate}%)`,
+            status: 'completed',
+            plot_id: plotData?.id || null,
+            project_name: plotData?.projectName || null,
+        };
+        // Recalculation mode: attempt UPDATE of existing transaction instead of inserting a new one
+        if (preservedTimestamps) {
+            const { data: existingSellerTx } = await supabaseAdmin
+                .from('transactions')
+                .select('id, created_at')
+                .eq('plot_id', plotData?.id || '')
+                .eq('wallet_id', sellerId)
+                .eq('wallet_type', 'direct')
+                .limit(1)
+                .maybeSingle();
+
+            if (existingSellerTx) {
+                // Update amount & description only – created_at protected by trigger
+                const { error: updateTxError } = await supabaseAdmin
+                    .from('transactions')
+                    .update({
+                        amount: sellerDirectCommission,
+                        description: `Direct commission from plot sale (${plotCommissionRate}%)`,
+                        status: 'completed',
+                        project_name: plotData?.projectName || null,
+                        plot_id: plotData?.id || null,
+                    })
+                    .eq('id', existingSellerTx.id);
+                if (updateTxError) {
+                    logger.error('Failed to update existing seller transaction:', updateTxError.message);
+                } else {
+                    logger.dev(`✏️  Updated existing seller transaction (timestamp preserved: ${existingSellerTx.created_at})`);
+                }
+            } else {
+                if (preservedSellerTimestamp) {
+                    sellerTransactionData.created_at = preservedSellerTimestamp;
+                    logger.dev(`   📅 Using preserved seller transaction timestamp: ${preservedSellerTimestamp}`);
+                }
+                const { error: insertSellerTxError } = await supabaseAdmin
+                    .from('transactions')
+                    .insert(sellerTransactionData);
+                if (insertSellerTxError) {
+                    logger.error('Failed to insert seller transaction during recalculation:', insertSellerTxError.message);
+                } else {
+                    logger.dev('➕ Inserted new seller transaction (recalculation mode).');
+                }
+            }
         } else {
-            console.log(`✅ Transaction record created for seller`);
+            // ORIGINAL CALCULATION: check if RPC already created seller transaction
+            const { data: existingSellerTx } = await supabaseAdmin
+                .from('transactions')
+                .select('id')
+                .eq('plot_id', plotData?.id || '')
+                .eq('wallet_id', sellerId)
+                .eq('wallet_type', 'direct')
+                .limit(1)
+                .maybeSingle();
+            if (existingSellerTx) {
+                logger.dev('↪️ Skipping manual seller transaction insert (RPC already created one).');
+            } else {
+                const { error: sellerTransactionError } = await supabaseAdmin
+                    .from('transactions')
+                    .insert(sellerTransactionData);
+                if (sellerTransactionError) {
+                    logger.error('Transaction creation failed:', sellerTransactionError.message);
+                } else {
+                    logger.dev(`✅ Transaction record created for seller`);
+                }
+            }
         }
 
         // Calculate commissions for up to 2 levels (Level 3+ gets 0%)
@@ -2296,10 +2578,13 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
             const percentage = commissionRates[level as keyof typeof commissionRates];
             const commissionAmount = (saleAmount * percentage) / 100;
             
-            console.log(`💰 Level ${level} upline commission: ${saleAmount} × ${percentage}% = ₹${commissionAmount} for ${uplineProfile.full_name}`);
+            logger.dev(`💰 Level ${level} upline commission: ${saleAmount} × ${percentage}% = ₹${commissionAmount} for ${uplineProfile.full_name}`);
             
-            // Create commission record
-            const commissionData = {
+            // Create commission record with preserved timestamp if available
+            const timestampKey = `${uplineProfile.id}_${level}`;
+            const preservedTimestamp = preservedTimestamps?.get(timestampKey);
+            
+            const commissionData: any = {
                 sale_id: plotData?.id || `sale_${Date.now()}`,
                 seller_id: sellerId,
                 seller_name: sellerProfile.full_name || 'Unknown',
@@ -2313,15 +2598,66 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
                 project_name: plotData?.projectName || null,
             };
             
-            const { error: commissionError } = await supabaseAdmin
-                .from('commissions')
-                .insert(commissionData);
+            // Preserve original timestamp if this is a recalculation
+            if (preservedTimestamp) {
+                commissionData.created_at = preservedTimestamp;
+                logger.dev(`   📅 Using preserved timestamp: ${preservedTimestamp}`);
+            }
+            
+            // Use UPSERT if we have preserved timestamps (recalculation scenario)
+            // This updates existing records without changing created_at
+            if (preservedTimestamps && preservedTimestamp) {
+                // Try to find existing commission record by plot_id, receiver_id, and level
+                const { data: existingComm } = await supabaseAdmin
+                    .from('commissions')
+                    .select('id, created_at')
+                    .eq('plot_id', plotData?.id)
+                    .eq('receiver_id', uplineProfile.id)
+                    .eq('level', level)
+                    .single();
                 
-            if (commissionError) {
-                console.error(`Failed to create commission record for level ${level}:`, commissionError.message);
-                // Don't throw, just log
+                if (existingComm) {
+                    // UPDATE existing record, keeping original created_at
+                    const { error: updateError } = await supabaseAdmin
+                        .from('commissions')
+                        .update({
+                            amount: commissionAmount,
+                            percentage: percentage,
+                            sale_amount: saleAmount,
+                            seller_name: sellerProfile.full_name || 'Unknown',
+                            receiver_name: uplineProfile.full_name || 'Unknown',
+                        })
+                        .eq('id', existingComm.id);
+                    
+                    if (updateError) {
+                        logger.error(`Failed to update commission record for level ${level}:`, updateError.message);
+                    } else {
+                        logger.dev(`✅ Commission record UPDATED for level ${level} (timestamp preserved)`);
+                    }
+                } else {
+                    // INSERT with preserved timestamp
+                    const { error: insertError } = await supabaseAdmin
+                        .from('commissions')
+                        .insert(commissionData);
+                    
+                    if (insertError) {
+                        logger.error(`Failed to insert commission record for level ${level}:`, insertError.message);
+                    } else {
+                        logger.dev(`✅ Commission record INSERTED for level ${level} with preserved timestamp`);
+                    }
+                }
             } else {
-                console.log(`✅ Commission record created for level ${level}`);
+                // Normal INSERT for first-time commission
+                const { error: commissionError } = await supabaseAdmin
+                    .from('commissions')
+                    .insert(commissionData);
+                    
+                if (commissionError) {
+                    logger.error(`Failed to create commission record for level ${level}:`, commissionError.message);
+                    // Don't throw, just log
+                } else {
+                    logger.dev(`✅ Commission record created for level ${level}`);
+                }
             }
             
             // Update upline's wallet using RPC function with full details
@@ -2336,8 +2672,8 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
             });
 
             if (uplineWalletError) {
-                console.error('Failed to update upline wallet via RPC:', uplineWalletError.message);
-                console.log('Trying direct wallet update...');
+                logger.error('Failed to update upline wallet via RPC:', uplineWalletError.message);
+                logger.dev('Trying direct wallet update...');
                 
                 // Fallback: Get existing wallet and increment
                 const { data: existingWallet } = await supabaseAdmin
@@ -2363,34 +2699,97 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
                     });
                 
                 if (upsertError) {
-                    console.error(`Failed to update upline wallet: ${upsertError.message}`);
+                    logger.error(`Failed to update upline wallet: ${upsertError.message}`);
                     // Don't throw, continue with next level
                 } else {
-                    console.log(`✅ Upline wallet updated - Added ₹${commissionAmount} to downline balance`);
+                    logger.dev(`✅ Upline wallet updated - Added ₹${commissionAmount} to downline balance`);
                 }
             } else {
-                console.log(`✅ Upline wallet updated via RPC - Added ₹${commissionAmount}`);
+                logger.dev(`✅ Upline wallet updated via RPC - Added ₹${commissionAmount}`);
             }
             
-            // Create transaction record for the commission
-            const { error: uplineTransactionError } = await supabaseAdmin
-                .from('transactions')
-                .insert({
-                    wallet_id: uplineProfile.id,
-                    wallet_type: 'downline',
-                    type: 'credit',
-                    amount: commissionAmount,
-                    description: `Level ${level} commission from ${sellerProfile.full_name}'s sale`,
-                    status: 'completed',
-                    plot_id: plotData?.id || null,
-                    project_name: plotData?.projectName || null,
-                });
-                
-            if (uplineTransactionError) {
-                console.error('Upline transaction creation failed:', uplineTransactionError.message);
-                // Don't throw, just log
+            // Create / update upline transaction (avoid duplicates if RPC already inserted one)
+            const uplineTimestampKey = `${uplineProfile.id}_${level}`;
+            const preservedUplineTimestamp = preservedTimestamps?.get(uplineTimestampKey);
+            
+            const uplineTransactionData: any = {
+                wallet_id: uplineProfile.id,
+                wallet_type: 'downline',
+                type: 'credit',
+                amount: commissionAmount,
+                description: `Level ${level} commission from ${sellerProfile.full_name}'s sale`,
+                status: 'completed',
+                plot_id: plotData?.id || null,
+                project_name: plotData?.projectName || null,
+            };
+            if (preservedTimestamps) {
+                const { data: existingUplineTx } = await supabaseAdmin
+                    .from('transactions')
+                    .select('id, created_at')
+                    .eq('plot_id', plotData?.id || '')
+                    .eq('wallet_id', uplineProfile.id)
+                    .eq('wallet_type', 'downline')
+                    .limit(1)
+                    .maybeSingle();
+
+                if (existingUplineTx) {
+                    const { error: updateUplineTxError } = await supabaseAdmin
+                        .from('transactions')
+                        .update({
+                            amount: commissionAmount,
+                            description: `Level ${level} upline commission (${percentage}%) – Sale by ${sellerProfile.full_name} - Plot #${plotData?.plotNumber} - ${plotData?.projectName}`,
+                            status: 'completed',
+                            project_name: plotData?.projectName || null,
+                            plot_id: plotData?.id || null,
+                        })
+                        .eq('id', existingUplineTx.id);
+                    if (updateUplineTxError) {
+                        logger.error(`Failed to update existing Level ${level} transaction:`, updateUplineTxError.message);
+                    } else {
+                        logger.dev(`✏️  Updated existing Level ${level} upline transaction (timestamp preserved: ${existingUplineTx.created_at})`);
+                    }
+                } else {
+                    if (preservedUplineTimestamp) {
+                        uplineTransactionData.created_at = preservedUplineTimestamp;
+                        logger.dev(`   📅 Using preserved upline transaction timestamp: ${preservedUplineTimestamp}`);
+                    }
+                    uplineTransactionData.description = `Level ${level} upline commission (${percentage}%) – Sale by ${sellerProfile.full_name} - Plot #${plotData?.plotNumber} - ${plotData?.projectName}`;
+                    const { error: insertUplineTxError } = await supabaseAdmin
+                        .from('transactions')
+                        .insert(uplineTransactionData);
+                    if (insertUplineTxError) {
+                        logger.error(`Failed to insert Level ${level} upline transaction during recalculation:`, insertUplineTxError.message);
+                    } else {
+                        logger.dev(`➕ Inserted new Level ${level} upline transaction (recalculation mode).`);
+                    }
+                }
             } else {
-                console.log(`✅ Transaction record created for upline level ${level}`);
+                // Initial calculation: skip manual insert if one already exists (RPC likely created it)
+                const { data: existingUplineTx } = await supabaseAdmin
+                    .from('transactions')
+                    .select('id')
+                    .eq('plot_id', plotData?.id || '')
+                    .eq('wallet_id', uplineProfile.id)
+                    .eq('wallet_type', 'downline')
+                    .limit(1)
+                    .maybeSingle();
+                if (existingUplineTx) {
+                    logger.dev(`↪️ Skipping manual Level ${level} upline transaction insert (RPC already created one).`);
+                } else {
+                    if (preservedUplineTimestamp) {
+                        uplineTransactionData.created_at = preservedUplineTimestamp;
+                        logger.dev(`   📅 Using preserved upline transaction timestamp: ${preservedUplineTimestamp}`);
+                    }
+                    uplineTransactionData.description = `Level ${level} upline commission (${percentage}%) – Sale by ${sellerProfile.full_name} - Plot #${plotData?.plotNumber} - ${plotData?.projectName}`;
+                    const { error: uplineTransactionError } = await supabaseAdmin
+                        .from('transactions')
+                        .insert(uplineTransactionData);
+                    if (uplineTransactionError) {
+                        logger.error('Upline transaction creation failed:', uplineTransactionError.message);
+                    } else {
+                        logger.dev(`✅ Transaction record created for upline level ${level}`);
+                    }
+                }
             }
             
             commissions.push(commissionData);
@@ -2402,12 +2801,12 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
         
         const totalDistributed = sellerDirectCommission + commissions.reduce((sum, c) => sum + c.amount, 0);
         
-        console.log('\n🎉 Commission Distribution Summary:');
-        console.log(`   Seller Direct Commission: ₹${sellerDirectCommission} (${plotCommissionRate}%)`);
-        console.log(`   Upline Commissions (${commissions.length} levels): ₹${commissions.reduce((sum, c) => sum + c.amount, 0)}`);
-        console.log(`   Total Distributed: ₹${totalDistributed}`);
-        console.log(`   Sale Amount: ₹${saleAmount}`);
-        console.log(`   Company Profit: ₹${saleAmount - totalDistributed}`);
+        logger.dev('\n🎉 Commission Distribution Summary:');
+        logger.dev(`   Seller Direct Commission: ₹${sellerDirectCommission} (${plotCommissionRate}%)`);
+        logger.dev(`   Upline Commissions (${commissions.length} levels): ₹${commissions.reduce((sum, c) => sum + c.amount, 0)}`);
+        logger.dev(`   Total Distributed: ₹${totalDistributed}`);
+        logger.dev(`   Sale Amount: ₹${saleAmount}`);
+        logger.dev(`   Company Profit: ₹${saleAmount - totalDistributed}`);
         
         return {
             success: true,
@@ -2418,7 +2817,7 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
         };
         
     } catch (error) {
-        console.error('❌ Error processing commission calculation:', error);
+        logger.error('❌ Error processing commission calculation:', error);
         // Return partial success instead of throwing
         return {
             success: false,
@@ -2431,7 +2830,7 @@ export async function processCommissionCalculation(sellerId: string, saleAmount:
 
 export async function getBrokerCommissions(brokerId?: string) {
     const user = await getAuthenticatedUser();
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     
     try {
         let query = supabaseAdmin.from('commissions').select('*');
@@ -2451,9 +2850,238 @@ export async function getBrokerCommissions(brokerId?: string) {
         return commissions || [];
         
     } catch (error) {
-        console.error('Error fetching commissions:', error);
+        logger.error('Error fetching commissions:', error);
         // Return empty array instead of throwing error to prevent UI crashes
         return [];
+    }
+}
+
+// ========== COMMISSION & TRANSACTION REVERSAL (PLOT REVERSION) ==========
+export async function reversePlotFinancials(plotId: string, originalPlot: any) {
+    const supabaseAdmin = getSupabaseAdminClient();
+    const reversedAt = new Date().toISOString();
+    try {
+        logger.dev('🧹 Starting financial reversal for plot:', { plotId, originalStatus: originalPlot.status });
+
+        const sellerId = originalPlot.updated_by || originalPlot.broker_id;
+        if (!sellerId) {
+            logger.dev('⚠️ No seller/broker ID found on original plot; skipping direct commission reversal.');
+        }
+
+        // Reverse direct seller commission only if plot was sold
+        if (originalPlot.status === 'sold' && sellerId) {
+            const saleAmount = originalPlot.sold_amount || originalPlot.sale_price || 0;
+            const commissionRate = originalPlot.commission_rate || 6;
+            if (saleAmount > 0) {
+                const directCommission = (saleAmount * commissionRate) / 100;
+                logger.dev('🧮 Direct commission to reverse:', { saleAmount, commissionRate, directCommission });
+                // Fetch seller wallet
+                const { data: sellerWallet } = await supabaseAdmin
+                    .from('wallets')
+                    .select('id, owner_id, direct_sale_balance, downline_sale_balance, total_balance')
+                    .eq('owner_id', sellerId)
+                    .single();
+                if (sellerWallet) {
+                    const newDirect = Math.max((sellerWallet.direct_sale_balance || 0) - directCommission, 0);
+                    const newTotal = Math.max((sellerWallet.total_balance || 0) - directCommission, 0);
+                    const { error: updateSellerWalletErr } = await supabaseAdmin
+                        .from('wallets')
+                        .update({
+                            direct_sale_balance: newDirect,
+                            total_balance: newTotal,
+                            updated_at: reversedAt,
+                        })
+                        .eq('owner_id', sellerId);
+                    if (updateSellerWalletErr) {
+                        logger.error('Failed to update seller wallet during reversal:', updateSellerWalletErr.message);
+                    } else {
+                        logger.dev('✅ Seller wallet reversed:', { sellerId, newDirect, newTotal });
+                    }
+                }
+                // Mark direct seller transaction reversed
+                const { error: reverseSellerTxErr } = await supabaseAdmin
+                    .from('transactions')
+                    .update({ status: 'reversed', is_reversed: true })
+                    .eq('plot_id', plotId)
+                    .eq('wallet_id', sellerId)
+                    .eq('wallet_type', 'direct')
+                    .eq('is_reversed', false);
+                if (reverseSellerTxErr) {
+                    logger.error('Failed to mark seller transaction reversed:', reverseSellerTxErr.message);
+                }
+            }
+        }
+
+        // Reverse upline commissions & wallets
+        const { data: commissionRows, error: commissionFetchErr } = await supabaseAdmin
+            .from('commissions')
+            .select('id, receiver_id, amount, level')
+            .eq('plot_id', plotId)
+            .eq('is_reversed', false);
+        if (commissionFetchErr) {
+            logger.error('Failed to fetch commissions for reversal:', commissionFetchErr.message);
+        } else if (commissionRows && commissionRows.length) {
+            logger.dev(`🔁 Reversing ${commissionRows.length} upline commission records...`);
+            for (const row of commissionRows) {
+                // Adjust upline wallet balances
+                const { data: uplineWallet } = await supabaseAdmin
+                    .from('wallets')
+                    .select('id, owner_id, direct_sale_balance, downline_sale_balance, total_balance')
+                    .eq('owner_id', row.receiver_id)
+                    .single();
+                if (uplineWallet) {
+                    const newDownline = Math.max((uplineWallet.downline_sale_balance || 0) - row.amount, 0);
+                    const newTotal = Math.max((uplineWallet.total_balance || 0) - row.amount, 0);
+                    const { error: updateUplineErr } = await supabaseAdmin
+                        .from('wallets')
+                        .update({
+                            downline_sale_balance: newDownline,
+                            total_balance: newTotal,
+                            updated_at: reversedAt,
+                        })
+                        .eq('owner_id', row.receiver_id);
+                    if (updateUplineErr) {
+                        logger.error(`Failed to update upline wallet (${row.receiver_id}) during reversal:`, updateUplineErr.message);
+                    } else {
+                        logger.dev('✅ Upline wallet reversed:', { receiverId: row.receiver_id, newDownline, newTotal });
+                    }
+                }
+                // Mark related transaction reversed
+                const { error: reverseUplineTxErr } = await supabaseAdmin
+                    .from('transactions')
+                    .update({ status: 'reversed', is_reversed: true })
+                    .eq('plot_id', plotId)
+                    .eq('wallet_id', row.receiver_id)
+                    .eq('wallet_type', 'downline')
+                    .eq('is_reversed', false);
+                if (reverseUplineTxErr) {
+                    logger.error('Failed to mark upline transaction reversed:', reverseUplineTxErr.message);
+                }
+            }
+            // Mark commissions reversed in batch
+            const { error: markCommissionsErr } = await supabaseAdmin
+                .from('commissions')
+                .update({ is_reversed: true, reversed_at: reversedAt })
+                .eq('plot_id', plotId)
+                .eq('is_reversed', false);
+            if (markCommissionsErr) {
+                logger.error('Failed to mark commissions reversed:', markCommissionsErr.message);
+            } else {
+                logger.dev('✅ Commission records flagged as reversed');
+            }
+        } else {
+            logger.dev('ℹ️ No upline commissions to reverse for this plot.');
+        }
+
+        // Mark any remaining transactions (without wallet match) as reversed
+        const { error: bulkTxErr } = await supabaseAdmin
+            .from('transactions')
+            .update({ status: 'reversed', is_reversed: true })
+            .eq('plot_id', plotId)
+            .eq('is_reversed', false);
+        if (bulkTxErr) {
+            logger.error('Failed bulk transaction reversal update:', bulkTxErr.message);
+        }
+
+        // Revalidate affected paths
+        revalidatePath('/admin/commissions');
+        revalidatePath('/admin/brokers');
+        revalidatePath('/admin/associates');
+        revalidatePath('/broker/wallets');
+
+        return { success: true, message: 'Financials reversed successfully' };
+    } catch (error) {
+        logger.error('❌ Error reversing plot financials:', error);
+        return { success: false, message: (error as Error).message };
+    }
+}
+
+// ========== BOOKED PLOTS AMOUNT SET/RECALC ==========
+export async function setBookedPlotAmounts(plotId: string, totalAmount: number, bookingAmount?: number) {
+    await authorizeAdmin();
+    const supabaseAdmin = getSupabaseAdminClient();
+    try {
+        if (!plotId) throw new Error('plotId required');
+        if (!totalAmount || totalAmount <= 0) throw new Error('totalAmount must be > 0');
+        if (bookingAmount !== undefined && (bookingAmount < 0 || bookingAmount > totalAmount)) {
+            throw new Error('bookingAmount must be >= 0 and <= totalAmount');
+        }
+
+        // Fetch plot and payments
+        const { data: plot, error: plotErr } = await supabaseAdmin
+            .from('plots')
+            .select('id, status, broker_id, commission_status, total_plot_amount, booking_amount')
+            .eq('id', plotId)
+            .single();
+        if (plotErr || !plot) throw new Error('Plot not found');
+        if (plot.status.toLowerCase() !== 'booked') {
+            throw new Error('Can only set amounts for booked plots');
+        }
+
+        const { data: payments, error: payErr } = await supabaseAdmin
+            .from('payment_history')
+            .select('amount_received')
+            .eq('plot_id', plotId);
+        if (payErr) throw new Error(`Failed to fetch payments: ${payErr.message}`);
+        const totalPaid = (payments || []).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+
+        // Determine booking amount: prefer provided; else existing; else first payment (if any); else 0
+        let effectiveBooking = bookingAmount !== undefined ? bookingAmount : (plot.booking_amount || 0);
+        if (!effectiveBooking && payments && payments.length > 0) {
+            effectiveBooking = Number(payments[0].amount_received || 0);
+        }
+        if (effectiveBooking > totalAmount) effectiveBooking = totalAmount; // clamp
+
+        const remaining = Math.max(totalAmount - totalPaid, 0);
+        const paidPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+
+        // Prepare update
+        const update: any = {
+            total_plot_amount: totalAmount,
+            booking_amount: effectiveBooking || null,
+            remaining_amount: remaining,
+            paid_percentage: paidPercentage,
+            updated_at: new Date().toISOString(),
+        };
+
+        // If threshold reached and not yet sold, update status
+        const thresholdReached = paidPercentage >= 75;
+        if (thresholdReached && plot.status.toLowerCase() === 'booked') {
+            update.status = 'sold';
+        }
+
+        const { error: updateErr } = await supabaseAdmin
+            .from('plots')
+            .update(update)
+            .eq('id', plotId);
+        if (updateErr) throw new Error(`Failed to update plot amounts: ${updateErr.message}`);
+
+        // Commission distribution if just transitioned and pending
+        if (thresholdReached && plot.status.toLowerCase() === 'booked' && plot.commission_status === 'pending' && plot.broker_id) {
+            try {
+                const result = await processCommissionCalculation(plot.broker_id, totalAmount, { id: plotId, projectName: 'N/A', plotNumber: 'N/A', commissionRate: undefined });
+                if (result.success) {
+                    await supabaseAdmin
+                        .from('plots')
+                        .update({ commission_status: 'paid', updated_at: new Date().toISOString() })
+                        .eq('id', plotId);
+                }
+            } catch (e) {
+                logger.error('Commission distribution error after amount set:', e);
+            }
+        }
+
+        // Revalidate affected pages
+        revalidatePath('/admin/booked-plots');
+        revalidatePath('/admin/inventory');
+        revalidatePath('/admin/commissions');
+        revalidatePath('/admin/brokers');
+        revalidatePath('/admin/associates');
+
+        return { success: true, remaining, paidPercentage };
+    } catch (error) {
+        logger.error('Error in setBookedPlotAmounts:', error);
+        throw new Error(error instanceof Error ? error.message : 'Failed to set booked plot amounts');
     }
 }
 
@@ -2464,13 +3092,13 @@ export async function getBrokerCommissions(brokerId?: string) {
 export async function calculateCommissionForSoldPlots() {
     try {
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
-        console.log('🔍 Starting commission recalculation for sold plots...');
-        console.log('⚠️ This will clear all existing commissions and recalculate from scratch');
+        logger.dev('🔍 Starting commission recalculation for sold plots...');
+        logger.dev('⚠️ This will clear all existing commissions and recalculate from scratch');
         
         // STEP 1: Clear all existing commissions and reset wallets
-        console.log('🗑️ Clearing existing commissions and resetting wallets...');
+        logger.dev('🗑️ Clearing existing commissions and resetting wallets...');
         
         // Delete all commission records
         const { error: deleteCommissionsError } = await supabaseAdmin
@@ -2507,7 +3135,7 @@ export async function calculateCommissionForSoldPlots() {
             console.warn('Warning: Could not reset wallets:', resetWalletsError.message);
         }
         
-        console.log('✅ Cleared existing data, starting fresh calculation...');
+        logger.dev('✅ Cleared existing data, starting fresh calculation...');
         
         // STEP 2: Get all sold plots with broker information
         const { data: soldPlots, error: plotError } = await supabaseAdmin
@@ -2520,14 +3148,14 @@ export async function calculateCommissionForSoldPlots() {
         }
 
         if (!soldPlots || soldPlots.length === 0) {
-            console.log('❌ No sold plots found');
+            logger.dev('❌ No sold plots found');
             return { success: false, message: 'No sold plots found' };
         }
 
         // Filter plots that have broker information (either broker_id or updated_by)
         const plotsWithBroker = soldPlots.filter(plot => plot.broker_id || plot.updated_by);
         
-        console.log(`📊 Found ${soldPlots.length} sold plots, ${plotsWithBroker.length} have broker information`);
+        logger.dev(`📊 Found ${soldPlots.length} sold plots, ${plotsWithBroker.length} have broker information`);
         let processedCount = 0;
         let totalCommissionDistributed = 0;
 
@@ -2539,13 +3167,13 @@ export async function calculateCommissionForSoldPlots() {
                 // Use total_plot_amount for booked plots, fall back to sale_price for old sold plots
                 const saleAmount = plot.total_plot_amount || plot.sale_price;
                 
-                console.log(`\n🔄 Processing plot ${plot.plot_number} (${plot.project_name})`);
-                console.log(`   Sale Amount: ₹${saleAmount}`);
-                console.log(`   Broker ID: ${brokerId}`);
+                logger.dev(`\n🔄 Processing plot ${plot.plot_number} (${plot.project_name})`);
+                logger.dev(`   Sale Amount: ₹${saleAmount}`);
+                logger.dev(`   Broker ID: ${brokerId}`);
                 
                 // Use default commission rate of 6% to match the direct seller rate
                 const defaultCommissionRate = plot.commission_rate || 6;
-                console.log(`   Commission Rate: ${defaultCommissionRate}%`);
+                logger.dev(`   Commission Rate: ${defaultCommissionRate}%`);
 
                 // Calculate commission using our existing function
                 const result = await processCommissionCalculation(
@@ -2559,19 +3187,19 @@ export async function calculateCommissionForSoldPlots() {
                     }
                 );
 
-                console.log(`   ✅ Commission calculated for plot ${plot.plot_number}`);
+                logger.dev(`   ✅ Commission calculated for plot ${plot.plot_number}`);
                 processedCount++;
                 totalCommissionDistributed += (saleAmount * defaultCommissionRate) / 100;
 
             } catch (plotError) {
-                console.error(`❌ Error processing plot ${plot.plot_number}:`, plotError);
+                logger.error(`❌ Error processing plot ${plot.plot_number}:`, plotError);
                 // Continue with other plots even if one fails
             }
         }
 
-        console.log(`\n🎉 Commission calculation complete!`);
-        console.log(`   Plots processed: ${processedCount}/${plotsWithBroker.length}`);
-        console.log(`   Total commission distributed: ₹${totalCommissionDistributed.toFixed(2)}`);
+        logger.dev(`\n🎉 Commission calculation complete!`);
+        logger.dev(`   Plots processed: ${processedCount}/${plotsWithBroker.length}`);
+        logger.dev(`   Total commission distributed: ₹${totalCommissionDistributed.toFixed(2)}`);
 
         // Revalidate relevant pages
         revalidatePath('/admin/associates');
@@ -2589,7 +3217,7 @@ export async function calculateCommissionForSoldPlots() {
         };
 
     } catch (error) {
-        console.error('❌ Error in calculateCommissionForSoldPlots:', error);
+        logger.error('❌ Error in calculateCommissionForSoldPlots:', error);
         return {
             success: false,
             message: `Failed to calculate commissions: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -2601,9 +3229,9 @@ export async function calculateCommissionForSoldPlots() {
 export async function recalculateCommissionForPlot(plotId: string) {
     try {
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
-        console.log(`🔄 Recalculating commission for plot: ${plotId}`);
+        logger.dev(`🔄 Recalculating commission for plot: ${plotId}`);
         
         // Get the plot details
         const { data: plot, error: plotError } = await supabaseAdmin
@@ -2634,14 +3262,88 @@ export async function recalculateCommissionForPlot(plotId: string) {
             throw new Error('No sale amount found for this plot');
         }
 
-        console.log(`📊 Plot Details:`);
-        console.log(`   Project: ${plot.project_name}`);
-        console.log(`   Plot #: ${plot.plot_number}`);
-        console.log(`   Sale Amount: ₹${saleAmount}`);
-        console.log(`   Broker ID: ${brokerId}`);
-        console.log(`   Commission Rate: ${plot.commission_rate || 6}%`);
+        logger.dev(`📊 Plot Details:`);
+        logger.dev(`   Project: ${plot.project_name}`);
+        logger.dev(`   Plot #: ${plot.plot_number}`);
+        logger.dev(`   Sale Amount: ₹${saleAmount}`);
+        logger.dev(`   Broker ID: ${brokerId}`);
+        logger.dev(`   Commission Rate: ${plot.commission_rate || 6}%`);
 
-        // Calculate commission
+        // STEP 1: Get existing commissions for this plot (to preserve timestamps and IDs)
+        logger.dev(`� Fetching existing commissions for plot ${plot.plot_number}...`);
+        
+        const { data: existingCommissions } = await supabaseAdmin
+            .from('commissions')
+            .select('*')
+            .eq('plot_id', plot.id)
+            .order('level', { ascending: true });
+
+        const { data: existingTransactions } = await supabaseAdmin
+            .from('transactions')
+            .select('*')
+            .eq('plot_id', plot.id)
+            .order('created_at', { ascending: true });
+
+        // Store original timestamps - using wallet_id + level as key
+        const originalTimestamps = new Map();
+        const originalIds = new Map();
+        
+        if (existingCommissions && existingCommissions.length > 0) {
+            logger.dev(`📝 Found ${existingCommissions.length} existing commissions - preserving timestamps`);
+            for (const comm of existingCommissions) {
+                const key = `${comm.receiver_id}_${comm.level}`;
+                originalTimestamps.set(key, comm.created_at);
+                originalIds.set(key, comm.id);
+            }
+        }
+        
+        if (existingTransactions && existingTransactions.length > 0) {
+            logger.dev(`📝 Found ${existingTransactions.length} existing transactions - preserving timestamps`);
+            for (const tx of existingTransactions) {
+                // Use wallet_id + wallet_type to identify transaction type
+                // For direct sales: wallet_id_1 (level 1), for downline: wallet_id_level
+                const level = tx.wallet_type === 'direct' ? 1 : (tx.description.match(/Level (\d+)/) || [0, 2])[1];
+                const key = `${tx.wallet_id}_${level}`;
+                // Only set if not already set by commission (prefer commission timestamp)
+                if (!originalTimestamps.has(key)) {
+                    originalTimestamps.set(key, tx.created_at);
+                }
+            }
+        }
+
+        // Subtract old amounts from wallet balances
+        if (existingCommissions && existingCommissions.length > 0) {
+            // Subtract old amounts from wallet balances
+            logger.dev(`📉 Adjusting wallet balances...`);
+            for (const comm of existingCommissions) {
+                const { data: wallet } = await supabaseAdmin
+                    .from('wallets')
+                    .select('*')
+                    .eq('owner_id', comm.receiver_id)
+                    .single();
+
+                if (wallet) {
+                    const balanceField = comm.level === 1 ? 'direct_sale_balance' : 'downline_sale_balance';
+                    const newBalance = Math.max(0, (wallet[balanceField] || 0) - comm.amount);
+                    const newTotal = Math.max(0, (wallet.total_balance || 0) - comm.amount);
+
+                    await supabaseAdmin
+                        .from('wallets')
+                        .update({
+                            [balanceField]: newBalance,
+                            total_balance: newTotal,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('owner_id', comm.receiver_id);
+                }
+            }
+        }
+
+        // STEP 2 CHANGE: DO NOT DELETE transactions anymore – update amounts to preserve original created_at
+        // We keep commissions and transactions to maintain historical timestamps.
+        logger.dev(`🔐 Preserving existing commission & transaction timestamps (no deletion).`);
+
+        // STEP 3: Recalculate commissions (will UPDATE existing, preserve timestamps)        // STEP 3: Calculate new commissions
         const result = await processCommissionCalculation(
             brokerId,
             saleAmount,
@@ -2649,11 +3351,12 @@ export async function recalculateCommissionForPlot(plotId: string) {
                 id: plot.id,
                 projectName: plot.project_name,
                 plotNumber: plot.plot_number,
-                commissionRate: plot.commission_rate || 6, // Default to 6% if not set
-            }
+                commissionRate: plot.commission_rate || 6,
+            },
+            originalTimestamps // Pass preserved timestamps (used now for updates)
         );
 
-        console.log(`✅ Commission recalculation complete`);
+        logger.dev(`✅ Commission recalculation complete`);
 
         // Revalidate relevant pages
         revalidatePath('/admin/associates');
@@ -2670,7 +3373,7 @@ export async function recalculateCommissionForPlot(plotId: string) {
         };
 
     } catch (error) {
-        console.error('❌ Error recalculating commission:', error);
+        logger.error('❌ Error recalculating commission:', error);
         return {
             success: false,
             message: `Failed to recalculate commission: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -2683,7 +3386,7 @@ export async function recalculateCommissionForPlot(plotId: string) {
  */
 export async function getPublicPlots(): Promise<Plot[]> {
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
 
         // Get all plots (no booking_date column)
@@ -2747,7 +3450,7 @@ export async function getPublicPlots(): Promise<Plot[]> {
             bookingDate: bookingDates[plot.id] || null
         }));
     } catch (error) {
-        console.error('Error in getPublicPlots:', error);
+        logger.error('Error in getPublicPlots:', error);
         throw new Error(`Failed to get plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -2755,7 +3458,7 @@ export async function getPublicPlots(): Promise<Plot[]> {
 // Get all plots function for inventory pages
 export async function getPlots() {
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: plots, error } = await supabaseAdmin
             .from('plots')
@@ -2796,7 +3499,7 @@ export async function getPlots() {
             updatedBy: plot.updated_by,
         }));
     } catch (error) {
-        console.error('Error in getPlots:', error);
+        logger.error('Error in getPlots:', error);
         throw new Error(`Failed to get plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -2811,7 +3514,7 @@ export async function getPlots() {
 export async function getBookedPlots() {
     try {
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: plots, error } = await supabaseAdmin
             .from('plots')
@@ -2824,13 +3527,13 @@ export async function getBookedPlots() {
             .order('created_at', { ascending: false });
 
         if (error) {
-            console.error('Error fetching booked plots:', error);
+            logger.error('Error fetching booked plots:', error);
             throw new Error(`Failed to fetch booked plots: ${error.message}`);
         }
 
-        console.log('📊 Fetched booked plots:', plots?.length || 0);
+        logger.dev('📊 Fetched booked plots:', plots?.length || 0);
         if (plots && plots.length > 0) {
-            console.log('📊 First plot data:', {
+            logger.dev('📊 First plot data:', {
                 id: plots[0].id,
                 total_plot_amount: plots[0].total_plot_amount,
                 booking_amount: plots[0].booking_amount,
@@ -2842,7 +3545,7 @@ export async function getBookedPlots() {
         }
         return plots || [];
     } catch (error) {
-        console.error('Error in getBookedPlots:', error);
+        logger.error('Error in getBookedPlots:', error);
         throw new Error(`Failed to get booked plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -2853,7 +3556,7 @@ export async function getBookedPlots() {
 export async function getPaymentHistory(plotId: string) {
     try {
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         // Backfill: ensure an initial booking payment exists for legacy plots
         // where booking_amount was saved on plots but an entry wasn't inserted into payment_history
@@ -2874,7 +3577,7 @@ export async function getPaymentHistory(plotId: string) {
 
         return payments || [];
     } catch (error) {
-        console.error('Error in getPaymentHistory:', error);
+        logger.error('Error in getPaymentHistory:', error);
         throw new Error(`Failed to get payment history: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -2885,7 +3588,7 @@ export async function getPaymentHistory(plotId: string) {
  */
 async function ensureInitialBookingPayment(plotId: string) {
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         const { user } = await getAuthenticatedUser();
 
         // 1) Load plot minimal info
@@ -2896,7 +3599,7 @@ async function ensureInitialBookingPayment(plotId: string) {
             .single();
 
         if (plotErr) {
-            console.error('ensureInitialBookingPayment: failed to load plot', plotErr);
+            logger.error('ensureInitialBookingPayment: failed to load plot', plotErr);
             return;
         }
         if (!plot || !plot.booking_amount || plot.booking_amount <= 0) {
@@ -2913,7 +3616,7 @@ async function ensureInitialBookingPayment(plotId: string) {
             .limit(1);
 
         if (existErr) {
-            console.error('ensureInitialBookingPayment: failed to check existing payment', existErr);
+            logger.error('ensureInitialBookingPayment: failed to check existing payment', existErr);
             return;
         }
         if (existing && existing.length > 0) {
@@ -2939,12 +3642,12 @@ async function ensureInitialBookingPayment(plotId: string) {
             });
 
         if (insertErr) {
-            console.error('ensureInitialBookingPayment: failed to insert initial booking payment', insertErr);
+            logger.error('ensureInitialBookingPayment: failed to insert initial booking payment', insertErr);
         } else {
-            console.log('ensureInitialBookingPayment: inserted missing initial booking payment');
+            logger.dev('ensureInitialBookingPayment: inserted missing initial booking payment');
         }
     } catch (e) {
-        console.error('ensureInitialBookingPayment: unexpected error', e);
+        logger.error('ensureInitialBookingPayment: unexpected error', e);
     }
 }
 
@@ -2955,7 +3658,7 @@ async function ensureInitialBookingPayment(plotId: string) {
 export async function addPaymentToPlot(values: z.infer<typeof import('./schema').addPaymentSchema>) {
     try {
         const { user } = await getAuthenticatedUser('admin');
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         // Get plot details
         const { data: plot, error: plotError } = await supabaseAdmin
@@ -3007,9 +3710,9 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
             .single();
 
         if (checkError) {
-            console.error('❌ Error checking plot status:', checkError);
+            logger.error('❌ Error checking plot status:', checkError);
         } else {
-            console.log('📊 Plot status after payment:', {
+            logger.dev('📊 Plot status after payment:', {
                 plotId: values.plotId,
                 status: updatedPlot?.status,
                 paidPercentage: updatedPlot?.paid_percentage,
@@ -3022,12 +3725,12 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
                 Number(updatedPlot?.paid_percentage) >= 75 &&
                 updatedPlot?.commission_status === 'pending'
             ) {
-                console.log('🎯 Payment reached 75%! Triggering commission distribution...');
+                logger.dev('🎯 Payment reached 75%! Triggering commission distribution...');
                 await triggerCommissionDistribution(values.plotId);
             } else if (updatedPlot?.commission_status === 'paid') {
-                console.log('✅ Commission already paid');
+                logger.dev('✅ Commission already paid');
             } else {
-                console.log(`📝 Plot still in ${updatedPlot?.status} status (${updatedPlot?.paid_percentage}% paid)`);
+                logger.dev(`📝 Plot still in ${updatedPlot?.status} status (${updatedPlot?.paid_percentage}% paid)`);
             }
         }
 
@@ -3038,7 +3741,7 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
         
         return payment;
     } catch (error) {
-        console.error('Error in addPaymentToPlot:', error);
+        logger.error('Error in addPaymentToPlot:', error);
         throw new Error(`Failed to add payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -3049,7 +3752,7 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
  */
 async function triggerCommissionDistribution(plotId: string) {
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         // Get plot details with broker information
         const { data: plot, error: plotError } = await supabaseAdmin
@@ -3059,7 +3762,7 @@ async function triggerCommissionDistribution(plotId: string) {
             .single();
 
         if (plotError || !plot) {
-            console.error('❌ Plot not found:', plotError);
+            logger.error('❌ Plot not found:', plotError);
             throw new Error('Plot not found');
         }
 
@@ -3067,11 +3770,11 @@ async function triggerCommissionDistribution(plotId: string) {
         const brokerId = plot.broker_id;
 
         if (!soldAmount || !brokerId) {
-            console.error('❌ Missing required data:', { soldAmount, brokerId });
+            logger.error('❌ Missing required data:', { soldAmount, brokerId });
             throw new Error('Missing required plot information for commission calculation');
         }
 
-        console.log(`💰 Triggering commission distribution for plot ${plotId}:`, {
+        logger.dev(`💰 Triggering commission distribution for plot ${plotId}:`, {
             project: plot.project_name,
             plotNumber: plot.plot_number,
             soldAmount,
@@ -3096,13 +3799,13 @@ async function triggerCommissionDistribution(plotId: string) {
                 .update({ commission_status: 'paid' })
                 .eq('id', plotId);
 
-            console.log(`✅ Commission distributed successfully for plot ${plot.plot_number}:`, {
+            logger.dev(`✅ Commission distributed successfully for plot ${plot.plot_number}:`, {
                 totalDistributed: result.totalDistributed,
                 sellerCommission: result.sellerCommission,
                 uplineCommissions: result.uplineCommissions
             });
         } else {
-            console.error('❌ Commission calculation failed:', result.error);
+            logger.error('❌ Commission calculation failed:', result.error);
             throw new Error(`Commission calculation failed: ${result.error}`);
         }
 
@@ -3113,20 +3816,75 @@ async function triggerCommissionDistribution(plotId: string) {
         revalidatePath('/broker/dashboard');
 
     } catch (error) {
-        console.error('❌ Error in triggerCommissionDistribution:', error);
+        logger.error('❌ Error in triggerCommissionDistribution:', error);
         // Don't throw - just log the error so the payment can still be recorded
-        console.error(`Failed to distribute commission for plot ${plotId}, but payment was recorded`);
+        logger.error(`Failed to distribute commission for plot ${plotId}, but payment was recorded`);
     }
 }
 
 // ============================================
 // END BOOKED PLOTS MANAGEMENT
+// ========== BOOKED PLOT CANCELLATION ==========
+export async function cancelBookedPlot(plotId: string) {
+    await authorizeAdmin(); // Only admins can cancel bookings (adjust if brokers need access)
+    const supabaseAdmin = getSupabaseAdminClient();
+    try {
+        const { data: plot, error: fetchErr } = await supabaseAdmin
+            .from('plots')
+            .select('*')
+            .eq('id', plotId)
+            .single();
+        if (fetchErr || !plot) throw new Error('Plot not found');
+        if (plot.status !== 'booked') throw new Error('Only booked plots can be cancelled');
+        if (plot.paid_percentage !== null && plot.paid_percentage >= 75) {
+            throw new Error('Cannot cancel booking: paid percentage >= 75%');
+        }
+
+        logger.dev('🚫 Cancelling booked plot:', { plotId, paid_percentage: plot.paid_percentage });
+
+        // Reset booking-related fields and status
+        const { user } = await getAuthenticatedUser();
+        const updatePayload = {
+            status: 'available',
+            buyer_name: null,
+            buyer_phone: null,
+            buyer_email: null,
+            sale_date: null,
+            sold_amount: null,
+            commission_rate: null,
+            broker_id: null,
+            broker_name: null,
+            booking_amount: null,
+            remaining_amount: null,
+            paid_percentage: null,
+            tenure_months: null,
+            total_plot_amount: null,
+            updated_by: user.id,
+        } as any;
+
+        const { error: updateErr } = await supabaseAdmin
+            .from('plots')
+            .update(updatePayload)
+            .eq('id', plotId);
+        if (updateErr) throw new Error(`Failed to cancel booking: ${updateErr.message}`);
+
+        // Revalidate relevant paths
+        revalidatePath('/admin/inventory');
+        revalidatePath('/broker/inventory');
+        revalidatePath('/investor/dashboard');
+
+        return { success: true, message: 'Booked plot cancelled and reset to available' };
+    } catch (error) {
+        logger.error('❌ Error cancelling booked plot:', error);
+        return { success: false, message: (error as Error).message };
+    }
+}
 // ============================================
 
 // Testimonial functions for testimonials pages
 export async function getTestimonials() {
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: testimonials, error } = await supabaseAdmin
             .from('testimonials')
@@ -3139,7 +3897,7 @@ export async function getTestimonials() {
 
         return testimonials || [];
     } catch (error) {
-        console.error('Error in getTestimonials:', error);
+        logger.error('Error in getTestimonials:', error);
         throw new Error(`Failed to get testimonials: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -3147,7 +3905,7 @@ export async function getTestimonials() {
 export async function createTestimonial(testimonialData: any) {
     try {
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: testimonial, error } = await supabaseAdmin
             .from('testimonials')
@@ -3165,7 +3923,7 @@ export async function createTestimonial(testimonialData: any) {
         revalidatePath('/admin/testimonials');
         return testimonial;
     } catch (error) {
-        console.error('Error in createTestimonial:', error);
+        logger.error('Error in createTestimonial:', error);
         throw new Error(`Failed to create testimonial: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -3173,7 +3931,7 @@ export async function createTestimonial(testimonialData: any) {
 export async function updateTestimonial(id: string, updates: any) {
     try {
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: testimonial, error } = await supabaseAdmin
             .from('testimonials')
@@ -3192,7 +3950,7 @@ export async function updateTestimonial(id: string, updates: any) {
         revalidatePath('/admin/testimonials');
         return testimonial;
     } catch (error) {
-        console.error('Error in updateTestimonial:', error);
+        logger.error('Error in updateTestimonial:', error);
         throw new Error(`Failed to update testimonial: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -3200,7 +3958,7 @@ export async function updateTestimonial(id: string, updates: any) {
 export async function deleteTestimonial(id: string) {
     try {
         await authorizeAdmin();
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { error } = await supabaseAdmin
             .from('testimonials')
@@ -3214,14 +3972,14 @@ export async function deleteTestimonial(id: string) {
         revalidatePath('/admin/testimonials');
         return { success: true };
     } catch (error) {
-        console.error('Error in deleteTestimonial:', error);
+        logger.error('Error in deleteTestimonial:', error);
         throw new Error(`Failed to delete testimonial: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
 export async function submitTestimonial(testimonialData: any) {
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: testimonial, error } = await supabaseAdmin
             .from('testimonials')
@@ -3238,14 +3996,14 @@ export async function submitTestimonial(testimonialData: any) {
 
         return testimonial;
     } catch (error) {
-        console.error('Error in submitTestimonial:', error);
+        logger.error('Error in submitTestimonial:', error);
         throw new Error(`Failed to submit testimonial: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
 export async function submitContactForm(formData: any) {
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         
         const { data: contact, error } = await supabaseAdmin
             .from('contacts')
@@ -3262,7 +4020,7 @@ export async function submitContactForm(formData: any) {
 
         return contact;
     } catch (error) {
-        console.error('Error in submitContactForm:', error);
+        logger.error('Error in submitContactForm:', error);
         throw new Error(`Failed to submit contact form: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -3278,7 +4036,7 @@ export async function getDashboardAnalytics(filters?: { startDate?: string; endD
         const endDate = filters?.endDate ? new Date(filters.endDate) : new Date();
         
         // Fetch all sold plots (sales data) from Supabase
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         let salesQuery = supabaseAdmin
             .from('plots')
             .select('*')
@@ -3360,7 +4118,7 @@ export async function getDashboardAnalytics(filters?: { startDate?: string; endD
                 activeBrokers = allBrokerProfiles.length;
             }
         } catch (error) {
-            console.log('Error fetching all broker profiles:', error);
+            logger.dev('Error fetching all broker profiles:', error);
             // Fallback: count unique brokers from sales and commissions if Supabase fails
             const brokersFromSales = new Set(filteredSales.map(sale => sale.brokerId));
             const brokersFromCommissions = new Set(filteredCommissions.map(commission => commission.receiverId));
@@ -3428,7 +4186,7 @@ export async function getDashboardAnalytics(filters?: { startDate?: string; endD
         };
         
     } catch (error) {
-        console.error('Error fetching dashboard analytics:', error);
+        logger.error('Error fetching dashboard analytics:', error);
         throw new Error('Failed to fetch dashboard analytics');
     }
 }
@@ -3437,7 +4195,7 @@ export async function getBrokersList() {
     await authorizeAdmin();
     
     try {
-        const supabaseAdmin = await getSupabaseAdminClient();
+        const supabaseAdmin = getSupabaseAdminClient();
         const { data: brokers, error } = await supabaseAdmin
             .from('profiles')
             .select('id, full_name, email')
@@ -3451,8 +4209,123 @@ export async function getBrokersList() {
         return brokers || [];
         
     } catch (error) {
-        console.error('Error fetching brokers list:', error);
+        logger.error('Error fetching brokers list:', error);
         throw new Error('Failed to fetch brokers list');
+    }
+}
+
+/**
+ * Backfill missing initial booking payments for all booked plots
+ * This fixes plots where booking_amount exists but payment_history entry is missing
+ */
+export async function backfillAllInitialBookingPayments() {
+    await authorizeAdmin();
+    const supabaseAdmin = getSupabaseAdminClient();
+    const { user } = await getAuthenticatedUser();
+    
+    try {
+        logger.dev('🔄 Starting backfill of initial booking payments...');
+        
+        // Get all booked plots
+        const { data: plots, error: plotsError } = await supabaseAdmin
+            .from('plots')
+            .select('id, project_name, plot_number, buyer_name, broker_id, booking_amount, total_plot_amount, remaining_amount, paid_percentage, created_at, status');
+        
+        if (plotsError) {
+            logger.error('Failed to fetch plots:', plotsError);
+            throw new Error(`Failed to fetch plots: ${plotsError.message}`);
+        }
+        
+        if (!plots || plots.length === 0) {
+            logger.dev('✅ No plots found');
+            return { success: true, processed: 0, created: 0, skipped: 0 };
+        }
+        
+        logger.dev(`📊 Found ${plots.length} plots to check`);
+        
+        let created = 0;
+        let skipped = 0;
+        
+        for (const plot of plots) {
+            // Skip if no total_plot_amount or if status is not booked
+            if (!plot.total_plot_amount || plot.total_plot_amount <= 0 || plot.status !== 'booked') {
+                continue;
+            }
+            
+            // Calculate how much has been paid (total - remaining)
+            const amountPaid = (plot.total_plot_amount || 0) - (plot.remaining_amount || 0);
+            
+            logger.dev(`Checking plot ${plot.project_name} #${plot.plot_number}:`, {
+                total: plot.total_plot_amount,
+                remaining: plot.remaining_amount,
+                amountPaid,
+                booking_amount: plot.booking_amount
+            });
+            
+            // Skip if nothing has been paid yet
+            if (amountPaid <= 0) {
+                logger.dev(`⏭️  Plot ${plot.plot_number} - No payments made yet (remaining = total)`);
+                skipped++;
+                continue;
+            }
+            
+            // Check if payment_history already has records
+            const { data: existingPayments, error: paymentError } = await supabaseAdmin
+                .from('payment_history')
+                .select('id, amount_received')
+                .eq('plot_id', plot.id);
+            
+            if (paymentError) {
+                logger.error(`Error checking payments for plot ${plot.plot_number}:`, paymentError);
+                continue;
+            }
+            
+            // If payments exist, skip
+            if (existingPayments && existingPayments.length > 0) {
+                logger.dev(`⏭️  Plot ${plot.plot_number} already has ${existingPayments.length} payment(s)`);
+                skipped++;
+                continue;
+            }
+            
+            // Create initial payment based on amount already paid
+            const paymentDate = plot.created_at
+                ? new Date(plot.created_at).toISOString().split('T')[0]
+                : new Date().toISOString().split('T')[0];
+            
+            logger.dev(`✨ Creating payment for plot ${plot.plot_number}: ₹${amountPaid}`);
+            
+            const { error: insertError } = await supabaseAdmin
+                .from('payment_history')
+                .insert({
+                    plot_id: plot.id,
+                    buyer_name: plot.buyer_name || 'N/A',
+                    broker_id: plot.broker_id || null,
+                    amount_received: amountPaid,
+                    payment_date: paymentDate,
+                    notes: 'Initial booking amount (backfilled)',
+                    updated_by: user.id,
+                });
+            
+            if (insertError) {
+                logger.error(`❌ Failed to create payment for plot ${plot.plot_number}:`, insertError);
+            } else {
+                logger.dev(`✅ Created initial payment for plot ${plot.plot_number}: ₹${amountPaid}`);
+                created++;
+            }
+        }
+        
+        logger.dev(`🎉 Backfill complete: ${created} created, ${skipped} skipped out of ${plots.length} total`);
+        
+        return {
+            success: true,
+            processed: plots.length,
+            created,
+            skipped
+        };
+        
+    } catch (error) {
+        logger.error('Error in backfillAllInitialBookingPayments:', error);
+        throw new Error(`Failed to backfill payments: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 

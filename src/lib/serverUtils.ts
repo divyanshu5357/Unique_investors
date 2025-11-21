@@ -1,13 +1,13 @@
 import { PlotSchema, Wallet } from './schema';
 import { cookies } from 'next/headers';
-import { createServerClient as createAdminClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 import { z } from 'zod';
 import { Broker, DownlineTreeData, withdrawalSchema } from './types';
 
-// This function creates a new Supabase admin client instance on-demand.
-export const getSupabaseAdminClient = async () => {
-    const cookieStore = cookies();
-    
+// This function creates a new Supabase admin client instance with service role key
+// that bypasses RLS policies for admin operations
+export const getSupabaseAdminClient = () => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     
@@ -19,15 +19,8 @@ export const getSupabaseAdminClient = async () => {
         throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable. Please add your Supabase Service Role Key to .env.local');
     }
     
-    return createAdminClient(
-        supabaseUrl, 
-        serviceRoleKey, 
-    {
-        cookies: {
-            async get(name: string) {
-                return (await cookieStore).get(name)?.value;
-            },
-        },
+    // Use createClient for service role - it properly bypasses RLS
+    return createClient(supabaseUrl, serviceRoleKey, {
         auth: {
             autoRefreshToken: false,
             persistSession: false,
@@ -35,17 +28,44 @@ export const getSupabaseAdminClient = async () => {
     });
 };
 
+// This function creates a server client for user-authenticated operations
+export const getSupabaseServerClient = async () => {
+    const cookieStore = cookies();
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !anonKey) {
+        throw new Error('Missing Supabase environment variables');
+    }
+    
+    return createServerClient(
+        supabaseUrl, 
+        anonKey, 
+    {
+        cookies: {
+            async get(name: string) {
+                return (await cookieStore).get(name)?.value;
+            },
+        },
+    });
+};
+
+
 export async function getAuthenticatedUser(requiredRole?: 'admin' | 'broker') {
-    const supabase = await getSupabaseAdminClient();
-    // Use getUser() which validates the user server-side with the Auth service
-    // (safer than trusting session data read from cookies).
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Use server client for auth checks (respects user session from cookies)
+    const supabaseServer = await getSupabaseServerClient();
+    
+    // Validate the user server-side with the Auth service
+    const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
 
     if (userError || !user) {
         throw new Error("Not authenticated");
     }
 
-    const { data: profile, error } = await supabase
+    // Use admin client only for data queries (bypasses RLS when needed)
+    const supabaseAdmin = getSupabaseAdminClient();
+    const { data: profile, error } = await supabaseAdmin
         .from('profiles')
         .select('role')
         .eq('id', user.id)
@@ -71,7 +91,7 @@ export async function authorizeAdmin() {
 }
 
 export async function buildDownlineTree(startBrokerId: string): Promise<DownlineTreeData | null> {
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data: allProfiles, error } = await supabaseAdmin.from('profiles').select('id, full_name, sponsorid');
     if (error) throw new Error("Could not fetch profiles for downline tree.");
 
@@ -98,6 +118,115 @@ export async function buildDownlineTree(startBrokerId: string): Promise<Downline
     }
 
     return buildTree(startBrokerId);
+}
+
+/**
+ * Validates that an auth user exists before profile operations
+ * @param userId - The user ID to validate
+ * @param operation - Description of the operation being performed (for error messages)
+ * @returns true if auth user exists
+ * @throws Error if auth user doesn't exist
+ */
+export async function validateAuthUserExists(userId: string, operation: string = 'operation'): Promise<boolean> {
+    const supabaseAdmin = getSupabaseAdminClient();
+    
+    try {
+        const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+        
+        if (error || !data.user) {
+            throw new Error(
+                `Cannot perform ${operation}: Auth user with ID ${userId} does not exist. ` +
+                `Please ensure the user exists in auth.users table before creating profile.`
+            );
+        }
+        
+        return true;
+    } catch (error) {
+        console.error(`Auth validation failed for ${operation}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Checks for orphaned profiles (profiles without auth users)
+ * @returns Array of orphaned profile objects
+ */
+export async function findOrphanedProfiles(): Promise<Array<{id: string, email: string, full_name: string}>> {
+    const supabaseAdmin = getSupabaseAdminClient();
+    
+    // Get all profiles
+    const { data: profiles, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, email, full_name');
+    
+    if (profileError || !profiles) {
+        throw new Error(`Failed to fetch profiles: ${profileError?.message}`);
+    }
+    
+    // Get all auth users
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.listUsers();
+    if (authError) {
+        throw new Error(`Failed to fetch auth users: ${authError.message}`);
+    }
+    
+    // Find profiles without auth users
+    const authUserIds = new Set(authData.users.map(u => u.id));
+    const orphaned = profiles.filter(p => !authUserIds.has(p.id));
+    
+    return orphaned;
+}
+
+/**
+ * Creates auth user for an existing orphaned profile
+ * @param profileId - The profile ID
+ * @param email - User email
+ * @param password - Temporary password
+ * @returns Created auth user data
+ */
+export async function createAuthForProfile(
+    profileId: string, 
+    email: string, 
+    password: string
+): Promise<{success: boolean, userId: string}> {
+    const supabaseAdmin = getSupabaseAdminClient();
+    
+    // Verify profile exists
+    const { data: profile, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('id', profileId)
+        .single();
+    
+    if (profileError || !profile) {
+        throw new Error(`Profile not found with ID: ${profileId}`);
+    }
+    
+    // Check if auth user already exists
+    const { data: existingUser } = await supabaseAdmin.auth.admin.getUserById(profileId);
+    if (existingUser?.user) {
+        throw new Error(`Auth user already exists for this profile`);
+    }
+    
+    // Create auth user with the profile ID
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        id: profileId,
+        email: email,
+        password: password,
+        email_confirm: true,
+        user_metadata: {
+            full_name: profile.full_name,
+            role: profile.role
+        }
+    });
+    
+    if (authError || !authData.user) {
+        throw new Error(`Failed to create auth user: ${authError?.message}`);
+    }
+    
+    return {
+        success: true,
+        userId: authData.user.id
+    };
 }
 
 export const BrokerFormSchema = z.object({

@@ -67,7 +67,7 @@ export default function WelcomeLetterPage() {
                 return;
             }
 
-            console.log('Current user ID:', session.user.id); // Debug log
+            // Removed debug log: session user id
 
             // Fetch profile with upline information
             const { data: profile, error } = await supabase
@@ -87,7 +87,7 @@ export default function WelcomeLetterPage() {
                 .eq('id', session.user.id)
                 .single();
             
-            console.log('Fetched profile:', profile); // Debug log
+            // Removed debug log: fetched profile
 
             if (error) {
                 console.error("Error fetching profile:", error);
@@ -194,7 +194,7 @@ export default function WelcomeLetterPage() {
         );
     }
 
-    console.log('Profile Data:', profileData); // Debug log
+    // Removed debug log: profile data snapshot
 
     const today = new Date().toLocaleDateString('en-IN', {
         day: 'numeric',

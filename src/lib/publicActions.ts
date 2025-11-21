@@ -4,16 +4,13 @@
 import { Plot, PlotSchema } from './schema';
 import { createClient } from '@supabase/supabase-js';
 
+
 // Create a Supabase client with public API key (anon key)
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-/**
- * Fetch all plot data that is meant to be publicly visible.
- * Only returns necessary plot information and excludes sensitive data.
- */
 export async function getPublicPlots(): Promise<Plot[]> {
     try {
         const { data: plots, error } = await supabase

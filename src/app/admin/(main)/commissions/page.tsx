@@ -15,9 +15,9 @@
         <div className="space-y-4 text-muted-foreground">
           <p>The commission distribution system automatically calculates and distributes commissions when plots are sold:</p>
           <ul className="list-disc list-inside space-y-2 ml-4">
-            <li><strong>Level 1:</strong> 1% commission to direct upline</li>
-            <li><strong>Level 2:</strong> 0.5% commission to second level upline</li>
-            <li><strong>Level 3:</strong> 0.3% commission to third level upline</li>
+            <li><strong>Level 1:</strong> 6% commission to direct upline</li>
+            <li><strong>Level 2:</strong> 2% commission to second level upline</li>
+            <li><strong>Level 3:</strong> 0.5% commission to third level upline</li>
           </ul>
           <p>Commission tracking and detailed analytics will be available soon.</p>
         </div>

@@ -187,11 +187,17 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
                         />
 
                         {/* Warning for 75% threshold */}
-                        {plot.paid_percentage && plot.paid_percentage < 75 && (
+                        {(!plot.total_plot_amount || plot.total_plot_amount <= 0) && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                <p className="text-sm text-red-800">
+                                    <strong>Missing Total Amount:</strong> Set the plot's total amount before recording payments to enable percentage & commission logic.
+                                </p>
+                            </div>
+                        )}
+                        {plot.total_plot_amount && plot.total_plot_amount > 0 && plot.paid_percentage !== null && plot.paid_percentage < 75 && (
                             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                                 <p className="text-sm text-yellow-800">
-                                    <strong>Note:</strong> When total payment reaches 75%, the plot status will automatically 
-                                    change to "Sold" and commissions will be distributed to the broker and uplines.
+                                    <strong>Note:</strong> When cumulative payments reach 75% of the total, the plot status will automatically change to "Sold" and commissions will be distributed.
                                 </p>
                             </div>
                         )}
@@ -200,7 +206,7 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
                             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={isSubmitting}>
+                            <Button type="submit" disabled={isSubmitting || !plot.total_plot_amount || plot.total_plot_amount <= 0}>
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Add Payment
                             </Button>

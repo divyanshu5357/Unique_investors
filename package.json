@@ -6,8 +6,12 @@
     "dev": "next dev -p 9003",
     "build": "cross-env NODE_ENV=production next build",
     "start": "next start",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+  "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check:orphaned": "node scripts/find-orphaned-profiles.js",
+    "fix:orphaned": "node scripts/fix-orphaned-profiles.js",
+    "health:check": "curl -s http://localhost:9003/api/health/data-integrity | jq",
+    "setup:fix": "bash scripts/setup-permanent-fix.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -31,6 +35,7 @@
     "@radix-ui/react-tabs": "^1.1.3",
     "@radix-ui/react-toast": "^1.2.6",
     "@radix-ui/react-tooltip": "^1.1.8",
+    "@studio-freight/lenis": "^1.0.36",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.53.0",
@@ -58,6 +63,8 @@
     "@types/react": "^18.3.24",
     "@types/react-dom": "^18.3.7",
     "cross-env": "^10.0.0",
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.0.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

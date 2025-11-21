@@ -123,15 +123,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
 
     const handleFormSubmit = form.handleSubmit(
         (data) => {
-            console.log('📝 Form submitted successfully with data:', data);
-            console.log('📝 Booked plot fields:', {
-                status: data.status,
-                totalPlotAmount: data.totalPlotAmount,
-                bookingAmount: data.bookingAmount,
-                tenureMonths: data.tenureMonths,
-                brokerId: data.brokerId,
-                buyerName: data.buyerName,
-            });
+            // Submit without verbose dev logging
             onSubmit(data);
         },
         (errors) => {

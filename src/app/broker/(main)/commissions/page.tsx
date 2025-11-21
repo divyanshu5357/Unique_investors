@@ -166,7 +166,7 @@ export default function BrokerCommissionsPage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <span>Level 1 (1%)</span>
+              <span>Level 1 (6%)</span>
             </CardTitle>
             <CardDescription>Direct downline commissions</CardDescription>
           </CardHeader>
@@ -181,7 +181,7 @@ export default function BrokerCommissionsPage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-              <span>Level 2 (0.5%)</span>
+              <span>Level 2 (2%)</span>
             </CardTitle>
             <CardDescription>Second level downline</CardDescription>
           </CardHeader>
@@ -196,7 +196,7 @@ export default function BrokerCommissionsPage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-              <span>Level 3 (0.3%)</span>
+              <span>Level 3 (0.5%)</span>
             </CardTitle>
             <CardDescription>Third level downline</CardDescription>
           </CardHeader>

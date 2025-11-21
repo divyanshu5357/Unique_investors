@@ -130,6 +130,9 @@ export function ProfileForm() {
         if (error) {
             toast({ title: "Error", description: error.message, variant: "destructive" });
         } else {
+            // Immediately update local user metadata so UI locks the field without reload
+            await supabase.auth.updateUser({ data: { has_changed_name: true } });
+            setUser((prev: any) => prev ? { ...prev, user_metadata: { ...(prev.user_metadata||{}), has_changed_name: true } } : prev);
             toast({ title: "Success", description: "Profile updated successfully. You cannot change your name again." });
         }
     };

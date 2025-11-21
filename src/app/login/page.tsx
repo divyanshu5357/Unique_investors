@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createClient } from '@/lib/supabase/client';
+import { LenisProvider } from "@/components/providers/LenisProvider";
 
 export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
@@ -72,15 +73,18 @@ export default function LoginPage() {
             window.location.href = '/';
         }
     };
-    
     return (
-        <div className="min-h-screen bg-muted flex flex-col justify-center items-center p-4">
+        <LenisProvider>
+            <div className="min-h-screen login-bg flex flex-col justify-center items-center p-4">
+            {/* Animated gradient blobs */}
+            <div className="blob w-[300px] h-[300px] top-[-80px] left-[-40px] opacity-30" />
+            <div className="blob w-[280px] h-[280px] bottom-[-60px] right-[-20px] opacity-40" />
             <div className="absolute top-8 left-8">
                 <Link href="/">
                     <Logo />
                 </Link>
             </div>
-            <Card className="w-full max-w-sm">
+            <Card className="w-full max-w-sm glass-panel relative animate-fade-up">
                 <CardHeader className="text-center">
                     <CardTitle className="text-2xl font-headline">Login</CardTitle>
                     <CardDescription>
@@ -101,7 +105,15 @@ export default function LoginPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="password">Password</Label>
+                                <Link 
+                                    href="/forgot-password" 
+                                    className="text-sm text-primary hover:underline"
+                                >
+                                    Forgot password?
+                                </Link>
+                            </div>
                             <div className="relative">
                                 <Input 
                                     id="password" 
@@ -146,6 +158,7 @@ export default function LoginPage() {
                     </div>
                 </CardContent>
             </Card>
-        </div>
+            </div>
+        </LenisProvider>
     );
 }

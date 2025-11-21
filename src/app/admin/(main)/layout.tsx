@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, PlusSquare, Home, LogOut, GanttChartSquare, Users, TrendingUp, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, PlusSquare, Home, LogOut, GanttChartSquare, Users, TrendingUp, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft, ClipboardList, History } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
@@ -22,6 +22,7 @@ const menuItems = [
   { href: '/admin/wallets', icon: Wallet, label: 'Wallets' },
   { href: '/admin/verifications', icon: Shield, label: 'Verifications' },
   { href: '/admin/testimonials', icon: Users, label: 'Testimonials' },
+  { href: '/admin/history', icon: History, label: 'History / Audit' },
   { href: '/admin/bulk-add', icon: PlusSquare, label: 'Bulk Add' },
 ];
 

@@ -1,7 +1,6 @@
 
 import { z } from 'zod';
 
-// Removed Firebase admin imports - now using Supabase only
 
 export const PlotSchema = z.object({
     id: z.string(),
@@ -12,6 +11,8 @@ export const PlotSchema = z.object({
     status: z.enum(['available', 'booked', 'sold']),
     dimension: z.string().min(1, 'Dimension is required'),
     area: z.coerce.number().positive('Area must be a positive number'),
+    facing: z.string().optional().nullable(),
+    price: z.coerce.number().optional().nullable(),
     buyerName: z.string().optional().nullable(),
     buyerPhone: z.string().optional().nullable(),
     buyerEmail: z.string().optional().nullable(),
@@ -137,7 +138,11 @@ export const processWithdrawalSchema = z.object({
     requestId: z.string(),
     action: z.enum(['approve', 'reject']),
     paymentType: z.enum(['cash', 'cheque', 'online_transfer']).optional(),
-    proofImageUrl: z.string().url().optional(),
+    // Allow empty string or valid URL; treat empty as undefined
+    proofImageUrl: z.string().transform(val => val.trim() === '' ? undefined : val).optional().refine(
+        (val) => !val || /^https?:\/\//.test(val),
+        { message: 'Invalid url' }
+    ),
     rejectionReason: z.string().optional(),
 });
 

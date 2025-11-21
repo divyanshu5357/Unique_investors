@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Plus, History, IndianRupee, TrendingUp, Clock } from 'lucide-react';
-import { getBookedPlots } from '@/lib/actions';
+import { getBookedPlots, setBookedPlotAmounts } from '@/lib/actions';
 import { Loader2 } from 'lucide-react';
 import { AddPaymentDialog } from '@/components/admin/AddPaymentDialog';
 import { PaymentHistoryDialog } from '@/components/admin/PaymentHistoryDialog';
@@ -33,6 +33,8 @@ export default function BookedPlotsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedPlot, setSelectedPlot] = useState<BookedPlot | null>(null);
     const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+    const [editingAmountsId, setEditingAmountsId] = useState<string | null>(null);
+    const [amountInputs, setAmountInputs] = useState<{ total: string; booking: string }>({ total: '', booking: '' });
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
 
     const handleCloseHistory = () => {
@@ -45,18 +47,6 @@ export default function BookedPlotsPage() {
         setLoading(true);
         try {
             const data = await getBookedPlots();
-            console.log('🎨 Client received plots data:', data);
-            if (data && data.length > 0) {
-                console.log('🎨 First plot in client:', {
-                    id: data[0].id,
-                    project_name: data[0].project_name,
-                    plot_number: data[0].plot_number,
-                    total_plot_amount: data[0].total_plot_amount,
-                    booking_amount: data[0].booking_amount,
-                    remaining_amount: data[0].remaining_amount,
-                    paid_percentage: data[0].paid_percentage,
-                });
-            }
             setPlots(data);
         } catch (error) {
             console.error('Error fetching booked plots:', error);
@@ -110,12 +100,22 @@ export default function BookedPlotsPage() {
         return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Pending</Badge>;
     };
 
+    // Aggregate helpers with fallback to payment history when structural fields are missing
     const totalBookedAmount = plots.reduce((sum, plot) => sum + (plot.total_plot_amount || 0), 0);
     const totalReceived = plots.reduce((sum, plot) => {
+        const paymentsSum = (plot.payment_history || []).reduce((pSum, p) => pSum + (p.amount_received || 0), 0);
+        if (!plot.total_plot_amount || plot.total_plot_amount <= 0) {
+            // Fallback: treat payments sum as received when total not set
+            return sum + paymentsSum;
+        }
         const received = (plot.total_plot_amount || 0) - (plot.remaining_amount || 0);
-        return sum + received;
+        // If structural calc yields 0 but payments exist, prefer payments sum
+        return sum + (received === 0 && paymentsSum > 0 ? paymentsSum : received);
     }, 0);
-    const totalPending = plots.reduce((sum, plot) => sum + (plot.remaining_amount || 0), 0);
+    const totalPending = plots.reduce((sum, plot) => {
+        if (!plot.total_plot_amount || plot.total_plot_amount <= 0) return sum; // Unknown pending when total unset
+        return sum + (plot.remaining_amount || 0);
+    }, 0);
 
     if (loading) {
         return (
@@ -203,16 +203,19 @@ export default function BookedPlotsPage() {
                                 </TableHeader>
                                 <TableBody>
                                     {plots.map((plot) => {
-                                        const received = (plot.total_plot_amount || 0) - (plot.remaining_amount || 0);
-                                        const percentage = plot.paid_percentage || 0;
+                                        const paymentsSum = (plot.payment_history || []).reduce((pSum, p) => pSum + (p.amount_received || 0), 0);
+                                        let received = (plot.total_plot_amount || 0) - (plot.remaining_amount || 0);
+                                        // Fallback to payments sum if structural values missing or zero
+                                        if ((!plot.total_plot_amount || plot.total_plot_amount <= 0) || (received === 0 && paymentsSum > 0)) {
+                                            received = paymentsSum;
+                                        }
+                                        let percentage = plot.paid_percentage || 0;
+                                        if ((!plot.total_plot_amount || plot.total_plot_amount <= 0) && paymentsSum > 0) {
+                                            // Without total we can't compute real percentage; show inferred 100% only if status sold
+                                            percentage = plot.status.toLowerCase() === 'sold' ? 100 : 0;
+                                        }
                                         
-                                        console.log('🎨 Rendering plot:', {
-                                            plot_number: plot.plot_number,
-                                            total_plot_amount: plot.total_plot_amount,
-                                            remaining_amount: plot.remaining_amount,
-                                            received,
-                                            percentage,
-                                        });
+                                        // Removed verbose client-side debug logging for production cleanliness
                                         
                                         return (
                                             <TableRow key={plot.id}>
@@ -221,13 +224,65 @@ export default function BookedPlotsPage() {
                                                 <TableCell>{plot.buyer_name || 'N/A'}</TableCell>
                                                 <TableCell>{plot.broker?.full_name || 'N/A'}</TableCell>
                                                 <TableCell className="text-right font-medium">
-                                                    {formatCurrency(plot.total_plot_amount)}
+                                                    {editingAmountsId === plot.id ? (
+                                                        <div className="flex flex-col gap-2 min-w-[140px]">
+                                                            <input
+                                                                type="number"
+                                                                placeholder="Total"
+                                                                className="border rounded px-2 py-1 text-sm"
+                                                                value={amountInputs.total}
+                                                                onChange={(e) => setAmountInputs(a => ({ ...a, total: e.target.value }))}
+                                                            />
+                                                            <input
+                                                                type="number"
+                                                                placeholder="Booking"
+                                                                className="border rounded px-2 py-1 text-sm"
+                                                                value={amountInputs.booking}
+                                                                onChange={(e) => setAmountInputs(a => ({ ...a, booking: e.target.value }))}
+                                                            />
+                                                            <div className="flex gap-2">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="default"
+                                                                    onClick={async () => {
+                                                                        const totalNum = parseFloat(amountInputs.total);
+                                                                        const bookingNum = amountInputs.booking ? parseFloat(amountInputs.booking) : undefined;
+                                                                        if (isNaN(totalNum) || totalNum <= 0) return;
+                                                                        try {
+                                                                            await setBookedPlotAmounts(plot.id, totalNum, bookingNum);
+                                                                            setEditingAmountsId(null);
+                                                                            setAmountInputs({ total: '', booking: '' });
+                                                                            fetchPlots();
+                                                                        } catch (err) {
+                                                                            console.error('Failed to set amounts', err);
+                                                                        }
+                                                                    }}
+                                                                >Save</Button>
+                                                                <Button size="sm" variant="outline" onClick={() => { setEditingAmountsId(null); setAmountInputs({ total: '', booking: '' }); }}>Cancel</Button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <span>{formatCurrency(plot.total_plot_amount)}</span>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => {
+                                                                    setEditingAmountsId(plot.id);
+                                                                    setAmountInputs({
+                                                                        total: plot.total_plot_amount ? String(plot.total_plot_amount) : '',
+                                                                        booking: plot.booking_amount ? String(plot.booking_amount) : ''
+                                                                    });
+                                                                }}
+                                                            >Edit</Button>
+                                                        </div>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell className="text-right text-green-600">
                                                     {formatCurrency(received)}
                                                 </TableCell>
                                                 <TableCell className="text-right text-orange-600">
-                                                    {formatCurrency(plot.remaining_amount)}
+                                                    {plot.total_plot_amount && plot.total_plot_amount > 0 ? formatCurrency(plot.remaining_amount) : '—'}
                                                 </TableCell>
                                                 <TableCell className="text-center">
                                                     <div className="flex flex-col items-center">

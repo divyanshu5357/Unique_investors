@@ -331,17 +331,54 @@ export default function AdminTransactionsPage() {
                                         name="proofImageUrl"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Proof Image URL (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input 
-                                                        placeholder="https://example.com/proof.jpg"
-                                                        {...field}
-                                                    />
-                                                </FormControl>
+                                                <FormLabel>Proof of Payment (Optional)</FormLabel>
+                                                <div className="space-y-2">
+                                                    <FormControl>
+                                                        <Input 
+                                                            placeholder="Paste an image URL or upload below"
+                                                            {...field}
+                                                        />
+                                                    </FormControl>
+                                                    <div>
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={async (e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (!file) return;
+                                                                try {
+                                                                    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                                                                    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                                                                    if (!supabaseUrl || !anonKey) {
+                                                                        toast({ title: 'Config Error', description: 'Supabase env vars missing', variant: 'destructive' });
+                                                                        return;
+                                                                    }
+                                                                    const bucket = 'withdrawal_proofs';
+                                                                    const filePath = `${Date.now()}_${file.name.replace(/\s+/g,'_')}`;
+                                                                    const { createClient } = await import('@supabase/supabase-js');
+                                                                    const supabase = createClient(supabaseUrl, anonKey);
+                                                                    // Ensure bucket exists (ignore errors)
+                                                                    try { await supabase.storage.createBucket(bucket, { public: true }); } catch {}
+                                                                    const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
+                                                                    if (uploadError) {
+                                                                        toast({ title: 'Upload Failed', description: uploadError.message, variant: 'destructive' });
+                                                                        return;
+                                                                    }
+                                                                    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`;
+                                                                    field.onChange(publicUrl);
+                                                                    // Trigger validation to clear prior error
+                                                                    form.trigger('proofImageUrl');
+                                                                    toast({ title: 'Image Uploaded', description: 'Proof image attached.' });
+                                                                } catch (err) {
+                                                                    toast({ title: 'Upload Error', description: (err as Error).message, variant: 'destructive' });
+                                                                }
+                                                            }}
+                                                            className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                                                        />
+                                                        <p className="text-xs text-muted-foreground mt-1">Upload transaction slip or cheque image. This will store the image and set its URL automatically.</p>
+                                                    </div>
+                                                </div>
                                                 <FormMessage />
-                                                <p className="text-sm text-muted-foreground">
-                                                    Upload transaction slip or cheque image URL
-                                                </p>
                                             </FormItem>
                                         )}
                                     />

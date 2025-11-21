@@ -13,6 +13,7 @@ import { Testimonials } from "@/components/Testimonials";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
 import Autoplay from "embla-carousel-autoplay"
+import { LenisProvider } from "@/components/providers/LenisProvider";
 
 
 const navItems = [
@@ -71,10 +72,9 @@ export default function HomePage() {
   const handlePrevImage = () => {
     setSelectedImageIndex((prevIndex) => (prevIndex - 1 + galleryImages.length) % galleryImages.length);
   };
-
-
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <LenisProvider>
+      <div className="flex flex-col min-h-screen bg-background">
       <header className="sticky top-0 z-50 w-full bg-black/50 backdrop-blur-sm">
         <div className="container mx-auto flex h-20 items-center justify-between px-4 md:px-6">
           <Logo className="text-white" />
@@ -112,8 +112,8 @@ export default function HomePage() {
           </div>
         </div>
       </header>
-      <main className="flex-1">
-        <section className="relative w-full h-[85vh]">
+    <main className="flex-1">
+        <section className="relative w-full h-[85vh] gradient-animated">
             <Carousel
                 className="w-full h-full"
                 plugins={[
@@ -145,10 +145,12 @@ export default function HomePage() {
                 </CarouselContent>
             </Carousel>
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center h-full text-center text-white p-4 pointer-events-none">
-                <p className="text-lg md:text-xl max-w-2xl mb-2">
+                <p className="text-lg md:text-xl max-w-2xl mb-2 opacity-0 animate-fade-up-delayed">
                   {heroContent.subtitle}
                 </p>
-                <h1 className="text-5xl md:text-7xl font-bold font-headline">{heroContent.title}</h1>
+                <h1 className="text-5xl md:text-7xl font-bold font-headline opacity-0 animate-fade-up">
+                  {heroContent.title}
+                </h1>
             </div>
         </section>
         <section id="about" className="py-12 md:py-24">
@@ -186,7 +188,11 @@ export default function HomePage() {
             </div>
           </div>
         </section>
-        <section id="gallery" className="py-12 md:py-24 bg-muted">
+        <section id="gallery" className="py-12 md:py-24 bg-muted relative">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="blob w-[280px] h-[280px] top-[10%] left-[5%] opacity-40" />
+            <div className="blob w-[320px] h-[320px] bottom-[15%] right-[10%] opacity-30" />
+          </div>
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-12">
               <h2 className="text-3xl font-bold font-headline tracking-tighter sm:text-4xl text-accent">PROPERTY GALLERY</h2>
@@ -255,6 +261,7 @@ export default function HomePage() {
 
       </main>
       <Footer />
-    </div>
+      </div>
+    </LenisProvider>
   )
 }

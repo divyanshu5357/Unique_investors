@@ -7,7 +7,7 @@ export async function updateUserPassword(userId: string, newPassword: string) {
         throw new Error(validation.errors[0]);
     }
 
-    const supabaseAdmin = await getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient();
     const { error } = await supabaseAdmin.auth.admin.updateUserById(
         userId,
         { password: newPassword }
