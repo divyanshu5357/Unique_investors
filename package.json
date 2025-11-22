@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 9003",
-    "build": "cross-env NODE_ENV=production next build",
-    "start": "next start",
+  "build": "cross-env NODE_ENV=production next build",
+  "start": "next start",
   "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check:orphaned": "node scripts/find-orphaned-profiles.js",

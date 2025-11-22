@@ -16,6 +16,7 @@ returns void as $$
   where id = user_id;
 $$ language sql volatile;
 
+
 -- Create a function to safely decrement the downline count
 create or replace function decrement_downline(user_id uuid)
 returns void as $$

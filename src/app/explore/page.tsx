@@ -85,7 +85,7 @@ export default function ExplorePlotsPage() {
                             <p>{error}</p>
                         </div>
                     ) : (
-                        <PlotExplorer allPlots={plots} onPlotClick={handlePlotClick} />
+                        <PlotExplorer allPlots={plots} onPlotClick={handlePlotClick} showBuyer={false} />
                     )}
                 </div>
             </main>
@@ -165,12 +165,6 @@ export default function ExplorePlotsPage() {
                                                 <div>
                                                     <p className="text-muted-foreground">Sold Date</p>
                                                     <p className="font-medium">{formatDate(selectedPlot.saleDate)}</p>
-                                                </div>
-                                            )}
-                                            {selectedPlot.buyerName && (
-                                                <div className="col-span-2">
-                                                    <p className="text-muted-foreground">Buyer</p>
-                                                    <p className="font-medium">{selectedPlot.buyerName}</p>
                                                 </div>
                                             )}
                                         </>

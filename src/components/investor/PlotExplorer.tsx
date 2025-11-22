@@ -34,7 +34,7 @@ const statusConfig = {
     },
 };
 
-const PlotCard = ({ plot, displayNumber }: { plot: Plot; displayNumber: number }) => (
+const PlotCard = ({ plot, displayNumber, showBuyer }: { plot: Plot; displayNumber: number; showBuyer: boolean }) => (
     <Dialog>
         <DialogTrigger asChild>
             <div className={cn(
@@ -60,13 +60,15 @@ const PlotCard = ({ plot, displayNumber }: { plot: Plot; displayNumber: number }
                 <div className="flex justify-between"><span className="text-muted-foreground">Block:</span> <strong>{plot.block}</strong></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Dimension:</span> <strong>{plot.dimension}</strong></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Area:</span> <strong>{plot.area} gaj</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Buyer:</span> <strong>{plot.buyerName || 'N/A'}</strong></div>
+                {showBuyer && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">Buyer:</span> <strong>{plot.buyerName || 'N/A'}</strong></div>
+                )}
             </div>
         </DialogContent>
     </Dialog>
 );
 
-export function PlotExplorer({ allPlots, onPlotClick }: { allPlots: Plot[], onPlotClick?: (plot: Plot) => void }) {
+export function PlotExplorer({ allPlots, onPlotClick, showBuyer = true }: { allPlots: Plot[], onPlotClick?: (plot: Plot) => void, showBuyer?: boolean }) {
     const projectNames = useMemo(() => [...new Set(allPlots.map(p => p.projectName))].sort(), [allPlots]);
     
     const [selectedProject, setSelectedProject] = useState('');
@@ -196,7 +198,8 @@ export function PlotExplorer({ allPlots, onPlotClick }: { allPlots: Plot[], onPl
                                     <PlotCard 
                                         key={plot.id} 
                                         plot={plot} 
-                                        displayNumber={index + 1} 
+                                        displayNumber={index + 1}
+                                        showBuyer={showBuyer}
                                     />))}
                             </div>
                         </CardContent>
