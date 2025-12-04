@@ -1495,22 +1495,55 @@ export async function getBrokerTransactions(brokerId?: string): Promise<Transact
 
     if (!transactions) return [];
     
-    return transactions.map(t => ({
-        id: t.id,
-        walletId: t.wallet_id,
-        walletType: t.wallet_type || 'direct',
-        type: t.type,
-        amount: t.amount,
-        description: t.description,
-        paymentMode: t.payment_mode || null,
-        transactionId: t.reference_id,
-        proofUrl: null,
-        status: t.status || 'completed',
-        note: null,
-        processedBy: null,
-        date: t.created_at || t.date,
-        processedAt: t.created_at || t.date,
+    // Fetch plot details for each transaction to enrich the description
+    const enrichedTransactions = await Promise.all(transactions.map(async (t) => {
+        let enhancedDescription = t.description;
+        
+        // Clean up old description format and remove commission terminology
+        if (enhancedDescription.includes('commission from plot sale')) {
+            // Old format: "Direct commission from plot sale (6%) - Plot #6 - Green Valley"
+            // Extract just the plot-related part
+            const plotMatch = enhancedDescription.match(/Plot #(\d+)[^-]*-\s*(.+?)(?:\s*-\s*Plot\s*#|$)/);
+            if (plotMatch) {
+                const plotNum = plotMatch[1];
+                const projectName = plotMatch[2];
+                const walletType = t.wallet_type === 'direct' ? 'Direct Sale' : 'Downline Sale';
+                enhancedDescription = `${walletType} Earnings from plot #${plotNum} - ${projectName}`;
+            }
+        }
+        
+        // If transaction has a plot_id and description doesn't already contain plot details, enhance it
+        if (t.plot_id && !enhancedDescription.includes('Plot #')) {
+            const { data: plot } = await supabaseAdmin
+                .from('plots')
+                .select('plot_number, project_name')
+                .eq('id', t.plot_id)
+                .single();
+            
+            if (plot) {
+                enhancedDescription = `${enhancedDescription} - Plot #${plot.plot_number}, ${plot.project_name}`;
+            }
+        }
+        
+        return {
+            id: t.id,
+            walletId: t.wallet_id,
+            walletType: t.wallet_type || 'direct',
+            type: t.type,
+            amount: t.amount,
+            description: enhancedDescription,
+            paymentMode: t.payment_mode || null,
+            transactionId: t.reference_id,
+            proofUrl: null,
+            status: t.status || 'completed',
+            note: null,
+            processedBy: null,
+            date: t.created_at || t.date,
+            processedAt: t.created_at || t.date,
+        };
     }));
+    
+    return enrichedTransactions;
 }
 
 export async function getBrokerWithdrawalRequests(brokerId?: string): Promise<WithdrawalRequestRecord[]> {
@@ -3766,6 +3799,9 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
         revalidatePath('/admin/inventory');
         revalidatePath('/admin/brokers');
         revalidatePath('/admin/associates');
+        revalidatePath('/broker/booked-plots');
+        revalidatePath('/broker/sold-plots');
+        revalidatePath('/broker/inventory');
         
         return payment;
     } catch (error) {
@@ -3837,11 +3873,14 @@ async function triggerCommissionDistribution(plotId: string) {
             throw new Error(`Commission calculation failed: ${result.error}`);
         }
 
-        // Revalidate broker pages to show updated balances
+        // Revalidate broker pages to show updated balances and plot status
         revalidatePath('/admin/brokers');
         revalidatePath('/admin/associates');
         revalidatePath('/broker/wallets');
         revalidatePath('/broker/dashboard');
+        revalidatePath('/broker/booked-plots');
+        revalidatePath('/broker/sold-plots');
+        revalidatePath('/broker/inventory');
 
     } catch (error) {
         logger.error('❌ Error in triggerCommissionDistribution:', error);
@@ -4393,8 +4432,18 @@ export async function getBrokerBookedPlots() {
             throw new Error(`Failed to fetch booked plots: ${error.message}`);
         }
 
-        logger.dev('📊 Fetched broker booked plots:', plots?.length || 0);
-        return plots || [];
+        // Ensure all calculated fields have defaults
+        const enrichedPlots = (plots || []).map(plot => ({
+            ...plot,
+            total_plot_amount: plot.total_plot_amount || 0,
+            booking_amount: plot.booking_amount || 0,
+            remaining_amount: plot.remaining_amount || 0,
+            paid_percentage: plot.paid_percentage || 0,
+            commission_status: plot.commission_status || 'pending'
+        }));
+
+        logger.dev('📊 Fetched broker booked plots:', enrichedPlots?.length || 0);
+        return enrichedPlots || [];
     } catch (error) {
         logger.error('Error in getBrokerBookedPlots:', error);
         throw new Error(`Failed to get booked plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -4426,6 +4475,7 @@ export async function getBrokerSoldPlots() {
                 commission_status,
                 created_at,
                 updated_at,
+                sale_price,
                 payment_history(id, amount_received, payment_date, notes)
             `)
             .eq('broker_id', user.id)
@@ -4437,11 +4487,147 @@ export async function getBrokerSoldPlots() {
             throw new Error(`Failed to fetch sold plots: ${error.message}`);
         }
 
-        logger.dev('📊 Fetched broker sold plots:', plots?.length || 0);
-        return plots || [];
+        // Ensure all calculated fields have defaults
+        const enrichedPlots = (plots || []).map(plot => ({
+            ...plot,
+            total_plot_amount: plot.total_plot_amount || plot.sale_price || 0,
+            booking_amount: plot.booking_amount || 0,
+            remaining_amount: plot.remaining_amount || 0,
+            paid_percentage: plot.paid_percentage || 0,
+            // For sold plots, commission should always be paid
+            commission_status: 'paid'
+        }));
+
+        logger.dev('📊 Fetched broker sold plots:', enrichedPlots?.length || 0);
+        return enrichedPlots || [];
     } catch (error) {
         logger.error('Error in getBrokerSoldPlots:', error);
         throw new Error(`Failed to get sold plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
+/**
+ * Get all plots for the current broker (for performance tracking)
+ * Returns all plots regardless of status with enriched data
+ */
+export async function getBrokerAllPlots() {
+    try {
+        const { user } = await getAuthenticatedUser('broker');
+        const supabaseAdmin = getSupabaseAdminClient();
+        
+        const { data: plots, error } = await supabaseAdmin
+            .from('plots')
+            .select(`
+                id,
+                plot_number,
+                project_name,
+                buyer_name,
+                status,
+                total_plot_amount,
+                booking_amount,
+                remaining_amount,
+                paid_percentage,
+                tenure_months,
+                commission_status,
+                created_at,
+                updated_at,
+                sale_price,
+                payment_history(id, amount_received, payment_date, notes)
+            `)
+            .eq('broker_id', user.id)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            logger.error('Error fetching broker all plots:', error);
+            throw new Error(`Failed to fetch plots: ${error.message}`);
+        }
+
+        // Ensure all calculated fields have defaults
+        const enrichedPlots = (plots || []).map(plot => ({
+            ...plot,
+            total_plot_amount: plot.total_plot_amount || plot.sale_price || 0,
+            booking_amount: plot.booking_amount || 0,
+            remaining_amount: plot.remaining_amount || 0,
+            paid_percentage: plot.paid_percentage || 0,
+            commission_status: plot.commission_status || 'pending'
+        }));
+
+        logger.dev('📊 Fetched broker all plots:', enrichedPlots?.length || 0);
+        return enrichedPlots || [];
+    } catch (error) {
+        logger.error('Error in getBrokerAllPlots:', error);
+        throw new Error(`Failed to get plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+/**
+ * Calculate projected commission for booked plots (not yet at 75% payment)
+ * Uses MLM commission rules: 6% direct, 2% level-1, 0.5% level-2
+ * Returns the expected commission that will be received when plot reaches 75% payment
+ */
+export async function getProjectedCommissionWallet() {
+    try {
+        const { user } = await getAuthenticatedUser('broker');
+        const supabaseAdmin = getSupabaseAdminClient();
+        
+        // Get all booked plots that are NOT yet at 75% payment
+        const { data: bookedPlots, error } = await supabaseAdmin
+            .from('plots')
+            .select(`
+                id,
+                plot_number,
+                project_name,
+                total_plot_amount,
+                paid_percentage,
+                commission_rate
+            `)
+            .eq('broker_id', user.id)
+            .ilike('status', 'booked')
+            .lt('paid_percentage', 75);
+
+        if (error) {
+            logger.error('Error fetching booked plots for projection:', error);
+            throw new Error(`Failed to fetch booked plots: ${error.message}`);
+        }
+
+        if (!bookedPlots || bookedPlots.length === 0) {
+            return {
+                totalProjectedAmount: 0,
+                totalPlots: 0,
+                plots: []
+            };
+        }
+
+        // Calculate projected commission for each plot (6% direct commission)
+        const projectedPlots = bookedPlots.map(plot => {
+            const commissionRate = plot.commission_rate || 6;
+            const projectedCommission = (plot.total_plot_amount * commissionRate) / 100;
+            return {
+                id: plot.id,
+                plotNumber: plot.plot_number,
+                projectName: plot.project_name,
+                totalAmount: plot.total_plot_amount,
+                paidPercentage: plot.paid_percentage || 0,
+                projectedCommission: projectedCommission
+            };
+        });
+
+        // Calculate totals
+        const totalProjectedAmount = projectedPlots.reduce((sum, p) => sum + p.projectedCommission, 0);
+
+        logger.dev('📊 Calculated projected commission:', {
+            brokerId: user.id,
+            totalProjectedAmount,
+            plotCount: projectedPlots.length
+        });
+
+        return {
+            totalProjectedAmount,
+            totalPlots: projectedPlots.length,
+            plots: projectedPlots
+        };
+    } catch (error) {
+        logger.error('Error in getProjectedCommissionWallet:', error);
+        throw new Error(`Failed to get projected commission: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}

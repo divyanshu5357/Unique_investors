@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useTransition } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,7 +14,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { withdrawalRequestSchema } from '@/lib/schema';
 import { z } from 'zod';
-import { requestWithdrawal, getBrokerWallets } from '@/lib/actions';
+import { requestWithdrawal, getBrokerWallets, getBrokerAllPlots } from '@/lib/actions';
 import type { Wallet } from '@/lib/schema';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -34,11 +33,9 @@ interface Plot {
 }
 
 export default function BrokerPerformancePage() {
-  const supabase = createClient();
   const [plots, setPlots] = useState<Plot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [brokerId, setBrokerId] = useState<string | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -53,31 +50,14 @@ export default function BrokerPerformancePage() {
   });
 
   useEffect(() => {
-    // Fetch broker id from session/profile
-    async function fetchBrokerId() {
-      const { data: { user } } = await supabase.auth.getUser();
-      setBrokerId(user?.id || null);
-    }
-    fetchBrokerId();
-  }, [supabase]);
-
-  useEffect(() => {
-    if (!brokerId) return;
     setLoading(true);
     
     Promise.all([
-      supabase
-        .from('plots')
-        .select('*')
-        .eq('broker_id', brokerId),
+      getBrokerAllPlots(),
       getBrokerWallets()
     ])
-    .then(([plotsResult, walletData]) => {
-      if (plotsResult.error) {
-        setError(plotsResult.error.message);
-      } else {
-        setPlots(plotsResult.data || []);
-      }
+    .then(([plotsData, walletData]) => {
+      setPlots(plotsData || []);
       setWallet(walletData);
       setLoading(false);
     })
@@ -85,7 +65,7 @@ export default function BrokerPerformancePage() {
       setError(err.message);
       setLoading(false);
     });
-  }, [brokerId, supabase]);
+  }, []);
 
   const onWithdrawalSubmit = (values: WithdrawalFormValues) => {
     startTransition(async () => {
@@ -189,7 +169,7 @@ export default function BrokerPerformancePage() {
                     <TableHead>Plot No.</TableHead>
                     <TableHead className="text-right">Total Amount</TableHead>
                     <TableHead className="text-right">Received</TableHead>
-                    <TableHead className="text-center">% Paid</TableHead>
+                    <TableHead className="text-center">Payment %</TableHead>
                     <TableHead className="text-center">Status</TableHead>
                     <TableHead className="text-center">Commission</TableHead>
                     <TableHead className="text-center">Action</TableHead>
@@ -211,9 +191,15 @@ export default function BrokerPerformancePage() {
                           ₹{received.toLocaleString('en-IN')}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant={plot.paid_percentage >= 75 ? 'default' : 'secondary'}>
-                            {plot.paid_percentage?.toFixed(1) || '0'}%
-                          </Badge>
+                          {plot.status === 'sold' ? (
+                            <Badge variant="default">
+                              {(plot.paid_percentage || 100).toFixed(1)}%
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">
+                              {plot.paid_percentage?.toFixed(1) || '0'}%
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant={plot.status === 'sold' ? 'default' : 'outline'}>
@@ -221,13 +207,18 @@ export default function BrokerPerformancePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
-                          {plot.paid_percentage < 75 ? (
+                          {plot.status === 'sold' ? (
+                            <div className="space-y-1">
+                              <Badge variant="default" className="bg-green-100 text-green-800">
+                                Paid
+                              </Badge>
+                              <div className="text-sm font-semibold text-green-700">
+                                ₹{(plot.total_plot_amount * 0.06).toFixed(2)}
+                              </div>
+                            </div>
+                          ) : (
                             <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
                               Pending
-                            </Badge>
-                          ) : (
-                            <Badge variant="default" className="bg-green-100 text-green-800">
-                              Withdrawable
                             </Badge>
                           )}
                         </TableCell>

@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, TrendingUp, UserCircle, LogOut, Home, Network, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, UserCircle, LogOut, Home, Network, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft, BarChart3, HelpingHand, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
@@ -19,6 +19,8 @@ const menuItems = [
   { href: '/broker/transactions', icon: CreditCard, label: 'Transactions' },
   { href: '/broker/verification', icon: Shield, label: 'Verification' },
   { href: '/broker/downline', icon: Network, label: 'My Downline' },
+  { href: '/broker/booked-plots', icon: HelpingHand, label: 'Booked Plots' },
+  { href: '/broker/sold-plots', icon: CheckCircle2, label: 'Sold Plots' },
   { href: '/broker/account', icon: UserCircle, label: 'Account' },
 ];
 

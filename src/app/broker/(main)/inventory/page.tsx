@@ -8,10 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CheckCircle2, HelpingHand, XCircle, Home, Loader2, Pencil, Calendar, IndianRupee } from 'lucide-react';
+import { CheckCircle2, HelpingHand, XCircle, Home, Loader2, Pencil, Calendar, IndianRupee, Eye, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Plot, PlotSchema } from '@/lib/schema';
 import { PlotForm, PlotFormValues } from '@/components/inventory/PlotForm';
@@ -19,6 +19,16 @@ import { toast } from '@/hooks/use-toast';
 import { updatePlot } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Separator } from '@/components/ui/separator';
 
 const statusConfig = {
     available: {
@@ -105,6 +115,11 @@ export default function PlotInventoryPage() {
     
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingPlot, setEditingPlot] = useState<Plot | null>(null);
+    
+    // States for plot details dialog
+    const [selectedPlotDetails, setSelectedPlotDetails] = useState<any>(null);
+    const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+    const [plotType, setPlotType] = useState<'booked' | 'sold'>('booked');
 
     useEffect(() => {
         const fetchPlots = async () => {
@@ -200,6 +215,12 @@ export default function PlotInventoryPage() {
         }
         setEditingPlot(plot);
         setIsFormOpen(true);
+    };
+
+    const handleViewDetails = (plot: any, type: 'booked' | 'sold') => {
+        setSelectedPlotDetails(plot);
+        setPlotType(type);
+        setShowDetailsDialog(true);
     };
 
     const onFormSubmit = async (values: PlotFormValues) => {
@@ -389,6 +410,7 @@ export default function PlotInventoryPage() {
                                                 <TableHead className="text-right">Received</TableHead>
                                                 <TableHead className="text-center">% Paid</TableHead>
                                                 <TableHead className="text-center">Tenure</TableHead>
+                                                <TableHead className="text-center">Action</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -409,6 +431,17 @@ export default function PlotInventoryPage() {
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-center">{plot.tenure_months} months</TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleViewDetails(plot, 'booked')}
+                                                            className="gap-2"
+                                                        >
+                                                            <Eye className="h-4 w-4" />
+                                                            View Details
+                                                        </Button>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -447,6 +480,7 @@ export default function PlotInventoryPage() {
                                                 <TableHead className="text-right">Amount Received</TableHead>
                                                 <TableHead className="text-center">Commission Status</TableHead>
                                                 <TableHead>Date</TableHead>
+                                                <TableHead className="text-center">Action</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -470,6 +504,17 @@ export default function PlotInventoryPage() {
                                                         <Calendar className="h-4 w-4 text-muted-foreground" />
                                                         {format(new Date(plot.updated_at), 'dd MMM yyyy')}
                                                     </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleViewDetails(plot, 'sold')}
+                                                            className="gap-2"
+                                                        >
+                                                            <Eye className="h-4 w-4" />
+                                                            View Details
+                                                        </Button>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -488,6 +533,158 @@ export default function PlotInventoryPage() {
                 initialData={editingPlot}
                 isSubmitting={isPending}
             />
+
+            {/* Plot Details Dialog */}
+            <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>
+                            Plot #{selectedPlotDetails?.plot_number} - {selectedPlotDetails?.project_name}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {plotType === 'booked' ? 'Booked Plot' : 'Sold Plot'} Details & Payment History
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {selectedPlotDetails && (
+                        <div className="space-y-6">
+                            {/* Plot Information */}
+                            <div className="space-y-3">
+                                <h3 className="font-semibold text-lg">Plot Information</h3>
+                                <Separator />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Project Name</p>
+                                        <p className="font-medium">{selectedPlotDetails.project_name}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Plot Number</p>
+                                        <p className="font-medium">#{selectedPlotDetails.plot_number}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Buyer Name</p>
+                                        <p className="font-medium">{selectedPlotDetails.buyer_name || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Status</p>
+                                        <Badge className="mt-1">
+                                            {plotType === 'booked' ? 'Booked' : 'Sold'}
+                                        </Badge>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Financial Information */}
+                            <div className="space-y-3">
+                                <h3 className="font-semibold text-lg">Financial Information</h3>
+                                <Separator />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Total Amount</p>
+                                        <p className="font-medium text-lg">
+                                            ₹{selectedPlotDetails.total_plot_amount?.toLocaleString('en-IN') || '0'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">
+                                            {plotType === 'booked' ? 'Amount Received' : 'Amount Received'}
+                                        </p>
+                                        <p className="font-medium text-lg text-green-600">
+                                            ₹{(selectedPlotDetails.total_plot_amount - (selectedPlotDetails.remaining_amount || 0))?.toLocaleString('en-IN') || '0'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Remaining Amount</p>
+                                        <p className="font-medium text-lg text-orange-600">
+                                            ₹{(selectedPlotDetails.remaining_amount || 0)?.toLocaleString('en-IN') || '0'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">% Paid</p>
+                                        <p className="font-medium text-lg">
+                                            <Badge variant={selectedPlotDetails.paid_percentage >= 75 ? 'default' : 'secondary'}>
+                                                {selectedPlotDetails.paid_percentage?.toFixed(2) || '0'}%
+                                            </Badge>
+                                        </p>
+                                    </div>
+                                </div>
+                                {plotType === 'booked' && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-sm text-muted-foreground">Booking Amount</p>
+                                            <p className="font-medium">
+                                                ₹{selectedPlotDetails.booking_amount?.toLocaleString('en-IN') || '0'}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-muted-foreground">Tenure (Months)</p>
+                                            <p className="font-medium">{selectedPlotDetails.tenure_months} months</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Commission & Status */}
+                            <div className="space-y-3">
+                                <h3 className="font-semibold text-lg">Status & Commission</h3>
+                                <Separator />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Commission Status</p>
+                                        <Badge className="mt-1" variant={selectedPlotDetails.commission_status === 'paid' ? 'default' : 'secondary'}>
+                                            {selectedPlotDetails.commission_status === 'paid' ? 'Paid' : 'Pending'}
+                                        </Badge>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Date</p>
+                                        <p className="font-medium">
+                                            {format(new Date(plotType === 'booked' ? selectedPlotDetails.created_at : selectedPlotDetails.updated_at), 'dd MMM yyyy HH:mm')}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Payment History */}
+                            {selectedPlotDetails.payment_history && selectedPlotDetails.payment_history.length > 0 && (
+                                <div className="space-y-3">
+                                    <h3 className="font-semibold text-lg">Payment History</h3>
+                                    <Separator />
+                                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                                        {selectedPlotDetails.payment_history.map((payment: any, index: number) => (
+                                            <div key={payment.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-md">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 text-sm font-medium">
+                                                        {index + 1}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium">₹{payment.amount_received?.toLocaleString('en-IN') || '0'}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {format(new Date(payment.payment_date), 'dd MMM yyyy')}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {payment.notes && (
+                                                    <p className="text-xs text-muted-foreground text-right">{payment.notes}</p>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end gap-2 mt-6">
+                        <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
+                            Close
+                        </Button>
+                        <Button onClick={() => window.print()} className="gap-2">
+                            <Download className="h-4 w-4" />
+                            Print Details
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

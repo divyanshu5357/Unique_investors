@@ -1,15 +1,25 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Banknote, ArrowUpRight, ArrowDownRight, Calendar, Loader2, Receipt } from "lucide-react";
-import { getBrokerWallets, getBrokerTransactions } from "@/lib/actions";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Banknote, ArrowUpRight, ArrowDownRight, Calendar, Loader2, Receipt, Download } from "lucide-react";
+import { getBrokerWallets, getBrokerTransactions, requestWithdrawal } from "@/lib/actions";
+import { useToast } from "@/hooks/use-toast";
 import type { Wallet } from "@/lib/schema";
+import { withdrawalRequestSchema } from "@/lib/schema";
 import { format } from "date-fns";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 interface TransactionRecord {
     id: string;
@@ -24,11 +34,24 @@ interface TransactionRecord {
     date: string;
 }
 
+type WithdrawalFormValues = z.infer<typeof withdrawalRequestSchema>;
+
 export default function WalletsPage() {
     const [wallet, setWallet] = useState<Wallet | null>(null);
     const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'direct' | 'downline'>('direct');
+    const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] = useState(false);
+    const [isPending, startTransition] = useTransition();
+    const { toast } = useToast();
+
+    const form = useForm<WithdrawalFormValues>({
+        resolver: zodResolver(withdrawalRequestSchema),
+        defaultValues: {
+            amount: 0,
+            note: '',
+        },
+    });
 
     useEffect(() => {
         const fetchData = async () => {
@@ -48,6 +71,29 @@ export default function WalletsPage() {
         };
         fetchData();
     }, []);
+
+    const onWithdrawalSubmit = (values: WithdrawalFormValues) => {
+        startTransition(async () => {
+            try {
+                await requestWithdrawal(values);
+                toast({
+                    title: 'Success!',
+                    description: 'Withdrawal request submitted successfully.',
+                });
+                setIsWithdrawalDialogOpen(false);
+                form.reset();
+                // Refresh wallet data
+                const walletData = await getBrokerWallets();
+                setWallet(walletData);
+            } catch (error) {
+                toast({
+                    title: 'Failed to submit withdrawal request',
+                    description: (error as Error).message,
+                    variant: 'destructive',
+                });
+            }
+        });
+    };
 
     const formatCurrency = (amount: number = 0) => {
         return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -195,10 +241,78 @@ export default function WalletsPage() {
                         <Banknote className="h-10 w-10 text-purple-600 dark:text-purple-400" />
                     </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
                     <p className="text-5xl font-bold text-purple-700 dark:text-purple-300">
                         {formatCurrency(wallet?.totalBalance)}
                     </p>
+                    <Dialog open={isWithdrawalDialogOpen} onOpenChange={(isOpen) => {
+                        setIsWithdrawalDialogOpen(isOpen);
+                        if (!isOpen) {
+                            form.reset();
+                        }
+                    }}>
+                        <DialogTrigger asChild>
+                            <Button className="w-full" disabled={wallet?.totalBalance === 0}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Request Withdrawal
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle>Request Withdrawal</DialogTitle>
+                                <DialogDescription>
+                                    Request to withdraw money from your available balance.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <Form {...form}>
+                                <form onSubmit={form.handleSubmit(onWithdrawalSubmit)} className="space-y-4">
+                                    <FormField
+                                        control={form.control}
+                                        name="amount"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Amount</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        type="number"
+                                                        placeholder="Enter amount"
+                                                        {...field}
+                                                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                                        max={wallet?.totalBalance}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                                <p className="text-sm text-muted-foreground">
+                                                    Available: {formatCurrency(wallet?.totalBalance || 0)}
+                                                </p>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={form.control}
+                                        name="note"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Note (Optional)</FormLabel>
+                                                <FormControl>
+                                                    <Textarea
+                                                        placeholder="Add any additional notes..."
+                                                        {...field}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <DialogFooter>
+                                        <Button type="submit" disabled={isPending}>
+                                            {isPending ? "Submitting..." : "Submit Request"}
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </Form>
+                        </DialogContent>
+                    </Dialog>
                 </CardContent>
             </Card>
 
