@@ -1982,13 +1982,10 @@ export async function manageBrokerWallet(values: z.infer<typeof manageWalletSche
             .from('transactions')
             .insert({
                 wallet_id: brokerId,
-                wallet_type: walletType,
-                type,
+                type: type === 'credit' ? 'credit' : (type === 'debit' ? 'debit' : 'commission'),
                 amount,
                 description,
-                payment_mode: paymentMode || null,
-                transaction_id: transactionId || null,
-                proof_url: null, // Admin can add this later if needed
+                reference_id: transactionId ? crypto.randomUUID() : null,
             });
 
         if (transactionError) {

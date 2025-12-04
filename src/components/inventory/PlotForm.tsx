@@ -27,6 +27,7 @@ interface PlotFormProps {
 interface Broker {
     id: string;
     full_name: string | null;
+    email?: string;
 }
 
 export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting }: PlotFormProps) {
@@ -335,7 +336,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                                     <SelectContent>
                                                         {brokers.map(broker => (
                                                             <SelectItem key={broker.id} value={broker.id}>
-                                                                {broker.full_name || 'Unknown'}
+                                                                {broker.full_name || 'Unknown'} {broker.email && `(${broker.email})`}
                                                             </SelectItem>
                                                         ))}
                                                     </SelectContent>
@@ -410,7 +411,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                                         <SelectContent>
                                                             {brokers.map(broker => (
                                                                 <SelectItem key={broker.id} value={broker.id}>
-                                                                    {broker.full_name || 'Unknown'}
+                                                                    {broker.full_name || 'Unknown'} {broker.email && `(${broker.email})`}
                                                                 </SelectItem>
                                                             ))}
                                                         </SelectContent>
