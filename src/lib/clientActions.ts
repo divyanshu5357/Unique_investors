@@ -7,7 +7,7 @@ export async function getBrokersClient(): Promise<Broker[]> {
     
     const { data: profiles, error: profileError } = await supabase
         .from('profiles')
-        .select('id, full_name')
+        .select('id, full_name, email')
         .eq('role', 'broker');
 
     if (profileError) throw new Error(`Failed to fetch profiles: ${profileError.message}`);
@@ -17,7 +17,7 @@ export async function getBrokersClient(): Promise<Broker[]> {
     return profiles.map(profile => ({
         id: profile.id,
         full_name: profile.full_name,
-        email: undefined,
+        email: profile.email,
         created_at: '',
         soldPlots: [],
         directSaleBalance: 0,
