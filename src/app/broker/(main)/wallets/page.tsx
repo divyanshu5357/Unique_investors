@@ -155,7 +155,7 @@ export default function WalletsPage() {
                             <span>Direct Sale Wallet</span>
                             <Banknote className="h-8 w-8 text-green-600 dark:text-green-400" />
                         </CardTitle>
-                        <CardDescription>Commission from your direct sales</CardDescription>
+                        <CardDescription>Earnings from your direct sales</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <p className="text-4xl font-bold text-green-700 dark:text-green-300">
@@ -174,7 +174,7 @@ export default function WalletsPage() {
                             <span>Downline Sale Wallet</span>
                             <Banknote className="h-8 w-8 text-blue-600 dark:text-blue-400" />
                         </CardTitle>
-                        <CardDescription>Commission from downline sales</CardDescription>
+                        <CardDescription>Earnings from your downline sales</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <p className="text-4xl font-bold text-blue-700 dark:text-blue-300">

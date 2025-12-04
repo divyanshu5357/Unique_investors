@@ -4357,3 +4357,91 @@ export async function backfillAllInitialBookingPayments() {
     }
 }
 
+/**
+ * Get all booked plots for the current broker
+ * Returns only plots booked by the current broker with payment history
+ */
+export async function getBrokerBookedPlots() {
+    try {
+        const { user } = await getAuthenticatedUser('broker');
+        const supabaseAdmin = getSupabaseAdminClient();
+        
+        const { data: plots, error } = await supabaseAdmin
+            .from('plots')
+            .select(`
+                id,
+                plot_number,
+                project_name,
+                buyer_name,
+                status,
+                total_plot_amount,
+                booking_amount,
+                remaining_amount,
+                paid_percentage,
+                tenure_months,
+                commission_status,
+                created_at,
+                updated_at,
+                payment_history(id, amount_received, payment_date, notes)
+            `)
+            .eq('broker_id', user.id)
+            .ilike('status', 'booked')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            logger.error('Error fetching broker booked plots:', error);
+            throw new Error(`Failed to fetch booked plots: ${error.message}`);
+        }
+
+        logger.dev('📊 Fetched broker booked plots:', plots?.length || 0);
+        return plots || [];
+    } catch (error) {
+        logger.error('Error in getBrokerBookedPlots:', error);
+        throw new Error(`Failed to get booked plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+/**
+ * Get all sold plots for the current broker
+ * Returns only plots sold by the current broker with payment history
+ */
+export async function getBrokerSoldPlots() {
+    try {
+        const { user } = await getAuthenticatedUser('broker');
+        const supabaseAdmin = getSupabaseAdminClient();
+        
+        const { data: plots, error } = await supabaseAdmin
+            .from('plots')
+            .select(`
+                id,
+                plot_number,
+                project_name,
+                buyer_name,
+                status,
+                total_plot_amount,
+                booking_amount,
+                remaining_amount,
+                paid_percentage,
+                tenure_months,
+                commission_status,
+                created_at,
+                updated_at,
+                payment_history(id, amount_received, payment_date, notes)
+            `)
+            .eq('broker_id', user.id)
+            .ilike('status', 'sold')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            logger.error('Error fetching broker sold plots:', error);
+            throw new Error(`Failed to fetch sold plots: ${error.message}`);
+        }
+
+        logger.dev('📊 Fetched broker sold plots:', plots?.length || 0);
+        return plots || [];
+    } catch (error) {
+        logger.error('Error in getBrokerSoldPlots:', error);
+        throw new Error(`Failed to get sold plots: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+

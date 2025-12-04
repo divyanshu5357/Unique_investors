@@ -3,19 +3,22 @@
 
 import React, { useState, useEffect, useMemo, useTransition } from 'react';
 // Firebase imports removed - now using Supabase actions
-import { getPlots } from '@/lib/actions';
+import { getPlots, getBrokerBookedPlots, getBrokerSoldPlots } from '@/lib/actions';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { CheckCircle2, HelpingHand, XCircle, Home, Loader2, Pencil } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { CheckCircle2, HelpingHand, XCircle, Home, Loader2, Pencil, Calendar, IndianRupee } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Plot, PlotSchema } from '@/lib/schema';
 import { PlotForm, PlotFormValues } from '@/components/inventory/PlotForm';
 import { toast } from '@/hooks/use-toast';
 import { updatePlot } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
 
 const statusConfig = {
     available: {
@@ -90,7 +93,10 @@ const PlotCard = ({ plot, onEdit }: { plot: Plot; onEdit: () => void; }) => (
 export default function PlotInventoryPage() {
     const [isPending, startTransition] = useTransition();
     const [allPlots, setAllPlots] = useState<Plot[]>([]);
+    const [bookedPlots, setBookedPlots] = useState<any[]>([]);
+    const [soldPlots, setSoldPlots] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('available');
 
     const [selectedProject, setSelectedProject] = useState('');
     const [selectedType, setSelectedType] = useState('');
@@ -104,20 +110,29 @@ export default function PlotInventoryPage() {
         const fetchPlots = async () => {
             try {
                 setLoading(true);
-                const fetchedPlots = await getPlots();
+                const [fetchedPlots, fetchedBookedPlots, fetchedSoldPlots] = await Promise.all([
+                    getPlots(),
+                    getBrokerBookedPlots(),
+                    getBrokerSoldPlots()
+                ]);
                 
-                // Validate and parse plots
+                // Validate and parse available plots
                 const validPlots: Plot[] = [];
                 fetchedPlots.forEach((plotData: any) => {
-                    const parseResult = PlotSchema.safeParse(plotData);
-                    if (parseResult.success) {
-                        validPlots.push(parseResult.data);
-                    } else {
-                        console.warn(`Invalid plot data for plot ${plotData.id}:`, parseResult.error.issues);
+                    // Only include available plots here
+                    if (plotData.status?.toLowerCase() === 'available') {
+                        const parseResult = PlotSchema.safeParse(plotData);
+                        if (parseResult.success) {
+                            validPlots.push(parseResult.data);
+                        } else {
+                            console.warn(`Invalid plot data for plot ${plotData.id}:`, parseResult.error.issues);
+                        }
                     }
                 });
                 
                 setAllPlots(validPlots);
+                setBookedPlots(fetchedBookedPlots || []);
+                setSoldPlots(fetchedSoldPlots || []);
                 
                 // Auto-select first project if none is selected
                 if (validPlots.length > 0 && !selectedProject) {
@@ -129,6 +144,7 @@ export default function PlotInventoryPage() {
                 
             } catch (error) {
                 console.error("Error fetching plots: ", error);
+                toast({ title: "Error", description: "Failed to fetch plots", variant: "destructive" });
             } finally {
                 setLoading(false);
             }
@@ -207,125 +223,263 @@ export default function PlotInventoryPage() {
              <div className="flex justify-between items-start">
                 <div>
                     <h1 className="text-3xl font-bold font-headline">Plot Inventory</h1>
-                    <p className="text-muted-foreground">Manage and view plot availability in real-time.</p>
+                    <p className="text-muted-foreground">Manage and view plot availability and your booking/sales history.</p>
                 </div>
             </div>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Filters</CardTitle>
-                    <CardDescription>Select a project to view its plot inventory.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-                        <div className="space-y-2">
-                            <Label htmlFor="project-name">Project Name</Label>
-                            <Select value={selectedProject} onValueChange={setSelectedProject} disabled={loading}>
-                                <SelectTrigger id="project-name">
-                                    <SelectValue placeholder={loading ? "Loading..." : "Select Project"} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {projectNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="type">Type</Label>
-                            <Select value={selectedType} onValueChange={setSelectedType} disabled={!selectedProject}>
-                                <SelectTrigger id="type">
-                                    <SelectValue placeholder="Select Type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {types.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="block">Block</Label>
-                            <Select value={selectedBlock} onValueChange={setSelectedBlock} disabled={!selectedType}>
-                                <SelectTrigger id="block">
-                                    <SelectValue placeholder="Select Block" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {blocks.map(block => <SelectItem key={block} value={block}>{block}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="available" className="gap-2">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Available
+                    </TabsTrigger>
+                    <TabsTrigger value="booked" className="gap-2">
+                        <HelpingHand className="h-4 w-4" />
+                        Booked
+                    </TabsTrigger>
+                    <TabsTrigger value="sold" className="gap-2">
+                        <XCircle className="h-4 w-4" />
+                        Sold
+                    </TabsTrigger>
+                </TabsList>
 
-            {loading ? (
-                 <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
-                            <Loader2 className="mr-2 h-8 w-8 animate-spin" />
-                            <p>Loading Inventory...</p>
-                        </div>
-                    </CardContent>
-                </Card>
-            ) : (selectedProject && filteredPlots.length > 0) ? (
-                 <>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Total Plots</CardTitle>
-                                <Home className="h-4 w-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{filteredPlots.length}</div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Available</CardTitle>
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{summaryCounts.available || 0}</div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Booked</CardTitle>
-                                <HelpingHand className="h-4 w-4 text-yellow-500" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{summaryCounts.booked || 0}</div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Sold</CardTitle>
-                                <XCircle className="h-4 w-4 text-red-500" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{summaryCounts.sold || 0}</div>
-                            </CardContent>
-                        </Card>
-                    </div>
-
+                <TabsContent value="available" className="space-y-6 mt-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Inventory Grid</CardTitle>
-                            <CardDescription>Visual representation of the plot inventory for {selectedProject}. Click a plot to see details.</CardDescription>
+                            <CardTitle>Filters</CardTitle>
+                            <CardDescription>Select a project to view its plot inventory.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-3">
-                                {filteredPlots.map(plot => <PlotCard key={plot.id} plot={plot} onEdit={() => handleEdit(plot)} />)}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+                                <div className="space-y-2">
+                                    <Label htmlFor="project-name">Project Name</Label>
+                                    <Select value={selectedProject} onValueChange={setSelectedProject} disabled={loading}>
+                                        <SelectTrigger id="project-name">
+                                            <SelectValue placeholder={loading ? "Loading..." : "Select Project"} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {projectNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="type">Type</Label>
+                                    <Select value={selectedType} onValueChange={setSelectedType} disabled={!selectedProject}>
+                                        <SelectTrigger id="type">
+                                            <SelectValue placeholder="Select Type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {types.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="block">Block</Label>
+                                    <Select value={selectedBlock} onValueChange={setSelectedBlock} disabled={!selectedType}>
+                                        <SelectTrigger id="block">
+                                            <SelectValue placeholder="Select Block" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {blocks.map(block => <SelectItem key={block} value={block}>{block}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
-                </>
-            ) : (
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
-                            <p>{selectedProject ? "No plots found for the selected filters." : "Please select a project to view inventory."}</p>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
+
+                    {loading ? (
+                         <Card>
+                            <CardContent className="pt-6">
+                                <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
+                                    <Loader2 className="mr-2 h-8 w-8 animate-spin" />
+                                    <p>Loading Inventory...</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (selectedProject && filteredPlots.length > 0) ? (
+                         <>
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                                <Card>
+                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                        <CardTitle className="text-sm font-medium">Total Plots</CardTitle>
+                                        <Home className="h-4 w-4 text-muted-foreground" />
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">{filteredPlots.length}</div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                        <CardTitle className="text-sm font-medium">Available</CardTitle>
+                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">{summaryCounts.available || 0}</div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                        <CardTitle className="text-sm font-medium">Booked</CardTitle>
+                                        <HelpingHand className="h-4 w-4 text-yellow-500" />
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">{summaryCounts.booked || 0}</div>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                        <CardTitle className="text-sm font-medium">Sold</CardTitle>
+                                        <XCircle className="h-4 w-4 text-red-500" />
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">{summaryCounts.sold || 0}</div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Inventory Grid</CardTitle>
+                                    <CardDescription>Visual representation of the plot inventory for {selectedProject}. Click a plot to see details.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-3">
+                                        {filteredPlots.map(plot => <PlotCard key={plot.id} plot={plot} onEdit={() => handleEdit(plot)} />)}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </>
+                    ) : (
+                        <Card>
+                            <CardContent className="pt-6">
+                                <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
+                                    <p>{selectedProject ? "No plots found for the selected filters." : "Please select a project to view inventory."}</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="booked" className="space-y-6 mt-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>My Booked Plots</CardTitle>
+                            <CardDescription>Plots you have booked with payment tracking</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {loading ? (
+                                <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
+                                    <Loader2 className="mr-2 h-8 w-8 animate-spin" />
+                                    <p>Loading booked plots...</p>
+                                </div>
+                            ) : bookedPlots.length === 0 ? (
+                                <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
+                                    <p>No booked plots found</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Project</TableHead>
+                                                <TableHead>Plot No.</TableHead>
+                                                <TableHead>Buyer Name</TableHead>
+                                                <TableHead className="text-right">Total Amount</TableHead>
+                                                <TableHead className="text-right">Received</TableHead>
+                                                <TableHead className="text-center">% Paid</TableHead>
+                                                <TableHead className="text-center">Tenure</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {bookedPlots.map((plot: any) => (
+                                                <TableRow key={plot.id}>
+                                                    <TableCell className="font-medium">{plot.project_name}</TableCell>
+                                                    <TableCell>#{plot.plot_number}</TableCell>
+                                                    <TableCell>{plot.buyer_name || 'N/A'}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        {plot.total_plot_amount ? `₹${plot.total_plot_amount.toLocaleString('en-IN')}` : '-'}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        {plot.booking_amount ? `₹${(plot.total_plot_amount - (plot.remaining_amount || 0)).toLocaleString('en-IN')}` : '-'}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Badge variant={plot.paid_percentage >= 50 ? 'default' : 'secondary'}>
+                                                            {plot.paid_percentage?.toFixed(1) || '0'}%
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-center">{plot.tenure_months} months</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="sold" className="space-y-6 mt-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>My Sold Plots</CardTitle>
+                            <CardDescription>Plots you have sold with complete payment information</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {loading ? (
+                                <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
+                                    <Loader2 className="mr-2 h-8 w-8 animate-spin" />
+                                    <p>Loading sold plots...</p>
+                                </div>
+                            ) : soldPlots.length === 0 ? (
+                                <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
+                                    <p>No sold plots found</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Project</TableHead>
+                                                <TableHead>Plot No.</TableHead>
+                                                <TableHead>Buyer Name</TableHead>
+                                                <TableHead className="text-right">Total Amount</TableHead>
+                                                <TableHead className="text-right">Amount Received</TableHead>
+                                                <TableHead className="text-center">Commission Status</TableHead>
+                                                <TableHead>Date</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {soldPlots.map((plot: any) => (
+                                                <TableRow key={plot.id}>
+                                                    <TableCell className="font-medium">{plot.project_name}</TableCell>
+                                                    <TableCell>#{plot.plot_number}</TableCell>
+                                                    <TableCell>{plot.buyer_name || 'N/A'}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        {plot.total_plot_amount ? `₹${plot.total_plot_amount.toLocaleString('en-IN')}` : '-'}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        {plot.total_plot_amount ? `₹${plot.total_plot_amount.toLocaleString('en-IN')}` : '-'}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Badge variant={plot.commission_status === 'paid' ? 'default' : 'secondary'}>
+                                                            {plot.commission_status === 'paid' ? 'Paid' : 'Pending'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="flex items-center gap-2">
+                                                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                                                        {format(new Date(plot.updated_at), 'dd MMM yyyy')}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
 
             <PlotForm 
                 isOpen={isFormOpen} 
