@@ -2510,7 +2510,7 @@ export async function processCommissionCalculation(
             wallet_type: 'direct',
             type: 'credit',
             amount: sellerDirectCommission,
-            description: `Direct commission from plot sale (${plotCommissionRate}%)`,
+            description: `Direct sale from plot #${plotData?.plotNumber} - ${plotData?.projectName}`,
             status: 'completed',
             plot_id: plotData?.id || null,
             project_name: plotData?.projectName || null,
@@ -2532,7 +2532,7 @@ export async function processCommissionCalculation(
                     .from('transactions')
                     .update({
                         amount: sellerDirectCommission,
-                        description: `Direct commission from plot sale (${plotCommissionRate}%)`,
+                        description: `Direct sale from plot #${plotData?.plotNumber} - ${plotData?.projectName}`,
                         status: 'completed',
                         project_name: plotData?.projectName || null,
                         plot_id: plotData?.id || null,
@@ -2745,7 +2745,7 @@ export async function processCommissionCalculation(
                 wallet_type: 'downline',
                 type: 'credit',
                 amount: commissionAmount,
-                description: `Level ${level} commission from ${sellerProfile.full_name}'s sale`,
+                description: `Downline sale from plot #${plotData?.plotNumber} - ${plotData?.projectName}`,
                 status: 'completed',
                 plot_id: plotData?.id || null,
                 project_name: plotData?.projectName || null,
@@ -2765,7 +2765,7 @@ export async function processCommissionCalculation(
                         .from('transactions')
                         .update({
                             amount: commissionAmount,
-                            description: `Level ${level} upline commission (${percentage}%) – Sale by ${sellerProfile.full_name} - Plot #${plotData?.plotNumber} - ${plotData?.projectName}`,
+                            description: `Downline sale from plot #${plotData?.plotNumber} - ${plotData?.projectName}`,
                             status: 'completed',
                             project_name: plotData?.projectName || null,
                             plot_id: plotData?.id || null,
@@ -2781,7 +2781,7 @@ export async function processCommissionCalculation(
                         uplineTransactionData.created_at = preservedUplineTimestamp;
                         logger.dev(`   📅 Using preserved upline transaction timestamp: ${preservedUplineTimestamp}`);
                     }
-                    uplineTransactionData.description = `Level ${level} upline commission (${percentage}%) – Sale by ${sellerProfile.full_name} - Plot #${plotData?.plotNumber} - ${plotData?.projectName}`;
+                    uplineTransactionData.description = `Downline sale from plot #${plotData?.plotNumber} - ${plotData?.projectName}`;
                     const { error: insertUplineTxError } = await supabaseAdmin
                         .from('transactions')
                         .insert(uplineTransactionData);
@@ -2808,7 +2808,7 @@ export async function processCommissionCalculation(
                         uplineTransactionData.created_at = preservedUplineTimestamp;
                         logger.dev(`   📅 Using preserved upline transaction timestamp: ${preservedUplineTimestamp}`);
                     }
-                    uplineTransactionData.description = `Level ${level} upline commission (${percentage}%) – Sale by ${sellerProfile.full_name} - Plot #${plotData?.plotNumber} - ${plotData?.projectName}`;
+                    uplineTransactionData.description = `Downline sale from plot #${plotData?.plotNumber} - ${plotData?.projectName}`;
                     const { error: uplineTransactionError } = await supabaseAdmin
                         .from('transactions')
                         .insert(uplineTransactionData);
