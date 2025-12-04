@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart } from "@/components/ui/charts";
-import { Download, User, Phone, MapPin, Mail, Globe } from "lucide-react";
+import { Download, User, Phone, MapPin, Mail, Globe, TrendingUp, Award, Calendar } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
@@ -176,53 +176,74 @@ export default function BrokerDashboardPage() {
   }, []);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome back, {profile?.full_name || 'Associate'}!</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900 space-y-4 sm:space-y-6 md:space-y-8 p-3 sm:p-4 md:p-6">
+      {/* Header Section */}
+      <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 dark:from-blue-700 dark:via-blue-600 dark:to-cyan-700 rounded-lg sm:rounded-xl md:rounded-2xl p-4 sm:p-6 md:p-8 shadow-lg text-white">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1">Dashboard</h1>
+        <p className="text-blue-100 text-sm sm:text-base">Welcome back, <span className="font-semibold">{profile?.full_name || 'Associate'}</span>! 👋</p>
       </div>
 
       {loading ? (
-        <div className="flex justify-center items-center min-h-[400px]">
-          <Loader2 className="h-8 w-8 animate-spin"/>
+        <div className="flex justify-center items-center min-h-[300px] sm:min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600"/>
         </div>
       ) : (
         <>
           {/* Account Setup Progress */}
           <WelcomeSection profile={profile} />
 
-          {/* Quick Stats */}
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-sm font-medium text-muted-foreground">Total Commission</h3>
-                  <p className="text-2xl font-bold">₹{profile?.totalcommission?.toLocaleString() || '0'}</p>
+          {/* Quick Stats - Responsive Grid */}
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Total Commission */}
+            <Card className="border-0 shadow-md hover:shadow-lg transition-shadow bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-xs sm:text-sm font-medium text-emerald-700 dark:text-emerald-300 mb-2">Total Commission</h3>
+                    <p className="text-xl sm:text-2xl md:text-3xl font-bold text-emerald-900 dark:text-emerald-100">₹{profile?.totalcommission?.toLocaleString() || '0'}</p>
+                  </div>
+                  <div className="hidden sm:flex p-2 sm:p-3 bg-emerald-200 dark:bg-emerald-800 rounded-lg">
+                    <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-700 dark:text-emerald-300" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-sm font-medium text-muted-foreground">Joining Date</h3>
-                  <p className="text-2xl font-bold">
-                    {profile?.joining_date 
-                      ? new Date(profile.joining_date).toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric'
-                        })
-                      : 'N/A'
-                    }
-                  </p>
+
+            {/* Joining Date */}
+            <Card className="border-0 shadow-md hover:shadow-lg transition-shadow bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-xs sm:text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">Joining Date</h3>
+                    <p className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-900 dark:text-blue-100">
+                      {profile?.joining_date 
+                        ? new Date(profile.joining_date).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric'
+                          })
+                        : 'N/A'
+                      }
+                    </p>
+                  </div>
+                  <div className="hidden sm:flex p-2 sm:p-3 bg-blue-200 dark:bg-blue-800 rounded-lg">
+                    <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-blue-700 dark:text-blue-300" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-sm font-medium text-muted-foreground">Sponsor</h3>
-                  <p className="text-2xl font-bold">{profile?.sponsorName || 'N/A'}</p>
+
+            {/* Sponsor */}
+            <Card className="border-0 shadow-md hover:shadow-lg transition-shadow bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20 sm:col-span-2 lg:col-span-1">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-xs sm:text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">Sponsor</h3>
+                    <p className="text-xl sm:text-2xl md:text-3xl font-bold text-purple-900 dark:text-purple-100">{profile?.sponsorName || 'N/A'}</p>
+                  </div>
+                  <div className="hidden sm:flex p-2 sm:p-3 bg-purple-200 dark:bg-purple-800 rounded-lg">
+                    <Award className="h-5 w-5 sm:h-6 sm:w-6 text-purple-700 dark:text-purple-300" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -232,40 +253,46 @@ export default function BrokerDashboardPage() {
           <WalletCard wallet={wallet} />
 
           {/* Plot Performance Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-headline">Plot Sales Performance</CardTitle>
-              <CardDescription>Your plot sales history by month</CardDescription>
+          <Card className="border-0 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-orange-500 to-amber-500 dark:from-orange-600 dark:to-amber-600 text-white pb-3 sm:pb-4">
+              <CardTitle className="font-headline text-lg sm:text-xl flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Plot Sales Performance
+              </CardTitle>
+              <CardDescription className="text-orange-100">Your plot sales history by month</CardDescription>
             </CardHeader>
-            <CardContent className="pt-4">
+            <CardContent className="pt-4 sm:pt-6 bg-gradient-to-b from-orange-50/50 to-white dark:from-orange-950/10 dark:to-slate-900">
               {loadingPlots ? (
-                <div className="flex justify-center items-center h-[300px]">
-                  <Loader2 className="h-8 w-8 animate-spin"/>
+                <div className="flex justify-center items-center h-[250px] sm:h-[300px]">
+                  <Loader2 className="h-8 w-8 animate-spin text-orange-500"/>
                 </div>
               ) : plotStats.length > 0 ? (
-                <BarChart
-                  data={plotStats}
-                  xField="month"
-                  yField="count"
-                  height={300}
-                  tooltipTitle="Plots Sold"
-                />
+                <div className="overflow-x-auto">
+                  <BarChart
+                    data={plotStats}
+                    xField="month"
+                    yField="count"
+                    height={280}
+                    tooltipTitle="Plots Sold"
+                  />
+                </div>
               ) : (
-                <div className="flex justify-center items-center h-[300px] text-muted-foreground">
-                  No plot sales data available yet
+                <div className="flex flex-col justify-center items-center h-[250px] sm:h-[300px] text-muted-foreground">
+                  <TrendingUp className="h-8 w-8 mb-2 opacity-50" />
+                  <p>No plot sales data available yet</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
           {/* Welcome Letter Card */}
-          <Card>
-            <CardHeader>
-                <CardTitle className="font-headline">Welcome Letter</CardTitle>
-                <CardDescription>Your official welcome letter from Unique Investor</CardDescription>
+          <Card className="border-0 shadow-md overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-indigo-500 to-blue-500 dark:from-indigo-600 dark:to-blue-600 text-white pb-3 sm:pb-4">
+                <CardTitle className="font-headline text-lg sm:text-xl">Welcome Letter</CardTitle>
+                <CardDescription className="text-indigo-100">Your official welcome letter from Unique Investor</CardDescription>
             </CardHeader>
-            <CardContent className="p-6 bg-muted/30">
-                <div ref={welcomeLetterRef} className="bg-white p-6 md:p-8 rounded-md shadow-md text-foreground" id="welcome-letter">
+            <CardContent className="p-3 sm:p-4 md:p-6 bg-gradient-to-b from-indigo-50/50 to-white dark:from-indigo-950/10 dark:to-slate-900">
+                <div ref={welcomeLetterRef} className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-8 rounded-lg shadow-inner text-foreground border border-indigo-200 dark:border-indigo-800" id="welcome-letter">
                     <div className="text-center mb-2">
                         <div className="flex items-center justify-center gap-3 mb-1">
                             <div className="bg-black p-2 rounded">
@@ -278,27 +305,27 @@ export default function BrokerDashboardPage() {
                         <p className="text-sm text-muted-foreground">Where Dreams Come True</p>
                     </div>
                    
-                    <hr className="my-4 border-dashed" />
+                    <hr className="my-4 border-dashed border-slate-300 dark:border-slate-700" />
                     
                     <div className="text-center mb-4">
-                        <h2 className="text-xl font-bold font-headline">Welcome Letter</h2>
+                        <h2 className="text-xl font-bold font-headline text-indigo-900 dark:text-indigo-300">Welcome Letter</h2>
                         <p className="text-xs text-muted-foreground">
                             📅 Date: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </p>
                     </div>
 
-                    <p className="text-sm text-center mb-4 leading-relaxed">
+                    <p className="text-sm text-center mb-4 leading-relaxed text-slate-700 dark:text-slate-300">
                         A warm welcome and lots of good wishes on becoming part of our growing team. Congratulations on being part of the team! The whole company welcomes you, and we look forward to a successful journey with you! Welcome aboard! We are all happy and excited about your inputs and contribution to our company.
                     </p>
 
-                    <hr className="my-4 border-dashed" />
+                    <hr className="my-4 border-dashed border-slate-300 dark:border-slate-700" />
                     
-                    <div className="bg-primary/5 p-4 rounded-md border border-primary/20">
-                        <h3 className="text-sm font-bold font-headline mb-3 text-primary flex items-center gap-2">
+                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/30 p-3 sm:p-4 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                        <h3 className="text-sm font-bold font-headline mb-3 text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
                             <User className="h-4 w-4" />
                             Sponsor Name: {profile?.sponsorName || 'N/A'}
                         </h3>
-                        <div className="space-y-2 text-xs">
+                        <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
                             <div className="grid grid-cols-[100px_1fr] gap-2">
                                 <span className="font-semibold">User ID:</span>
                                 <span className="break-all">{profile?.email || 'N/A'}</span>
@@ -323,30 +350,30 @@ export default function BrokerDashboardPage() {
                                     </div>
                                 </>
                             ) : (
-                                <div className="col-span-2 text-center py-3 px-2 bg-yellow-50 dark:bg-yellow-950/20 rounded border border-yellow-200 dark:border-yellow-800">
-                                    <p className="text-muted-foreground italic">
+                                <div className="col-span-2 text-center py-3 px-2 bg-yellow-100 dark:bg-yellow-950/40 rounded border border-yellow-300 dark:border-yellow-700">
+                                    <p className="text-yellow-900 dark:text-yellow-200 italic text-xs sm:text-sm">
                                         📋 Complete details will be available after verification approval
                                     </p>
                                 </div>
                             )}
                         </div>
-                        <p className="text-xs italic mt-3 text-muted-foreground border-t pt-2">
+                        <p className="text-xs italic mt-3 text-slate-600 dark:text-slate-400 border-t border-indigo-200 dark:border-indigo-800 pt-2">
                             🛈 This is the information you shall have to use for all your correspondence with the company.
                         </p>
                     </div>
                     
-                    <p className="text-sm text-center my-4 leading-relaxed">
+                    <p className="text-sm text-center my-4 leading-relaxed text-slate-700 dark:text-slate-300">
                         Assuring you of the best services always and wishing you continued success in your journey with UNIQUE INVESTOR. We look forward to a long-term association and prosperous future, together.
                     </p>
                     
-                    <hr className="my-4 border-dashed" />
+                    <hr className="my-4 border-dashed border-slate-300 dark:border-slate-700" />
 
                     <div className="text-center">
-                        <p className="font-semibold">Best Regards,</p>
-                        <p className="font-bold font-headline text-primary">Unique Investor</p>
+                        <p className="font-semibold text-slate-800 dark:text-slate-200">Best Regards,</p>
+                        <p className="font-bold font-headline text-indigo-600 dark:text-indigo-400">Unique Investor</p>
                     </div>
                     
-                    <div className="text-xs mt-4 space-y-2 text-muted-foreground border-t pt-4">
+                    <div className="text-xs mt-4 space-y-2 text-slate-600 dark:text-slate-400 border-t border-slate-300 dark:border-slate-700 pt-4">
                         <p className="flex items-start gap-2">
                             <MapPin className="h-3 w-3 shrink-0 mt-0.5" /> 
                             <span>Head Office: Shop no. 2, Shree Shahmal pahalwan Complex, near Brahmma mandir, opposite Gaur City 14th Avenue, greater Noida west 201301</span>
@@ -358,12 +385,12 @@ export default function BrokerDashboardPage() {
                         </div>
                     </div>
 
-                    <div className="mt-4 text-center text-xs text-muted-foreground/80 italic">
+                    <div className="mt-4 text-center text-xs text-slate-500 dark:text-slate-500 italic">
                       <p>This is a computer-generated document and it does not require a signature. This document shall not be invalidated solely on the ground that it is not signed.</p>
                     </div>
                 </div>
-                <div className="mt-6 flex justify-center">
-                    <Button onClick={handleDownloadPdf} disabled={loading}>
+                <div className="mt-4 sm:mt-6 flex justify-center">
+                    <Button onClick={handleDownloadPdf} disabled={loading} className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white">
                         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                         Download as PDF
                     </Button>

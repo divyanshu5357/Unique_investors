@@ -1,0 +1,226 @@
+/* Tree Container */
+.tree-container {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.02) 0%, rgba(59, 130, 246, 0.02) 100%);
+    border-radius: 1rem;
+    animation: fadeInContainer 0.6s ease-out;
+}
+
+@keyframes fadeInContainer {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Node Entry Animation */
+.node-entry {
+    animation: slideInNode 0.5s ease-out;
+    animation-fill-mode: both;
+}
+
+@keyframes slideInNode {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Node Wrapper with subtle glow on hover */
+.node-wrapper {
+    animation: nodeGlow 0.3s ease-out;
+    position: relative;
+}
+
+@keyframes nodeGlow {
+    from {
+        filter: drop-shadow(0 0 0 rgba(16, 185, 129, 0));
+    }
+    to {
+        filter: drop-shadow(0 0 0 rgba(16, 185, 129, 0));
+    }
+}
+
+.node-wrapper:hover {
+    animation: nodeGlowHover 0.4s ease-out forwards;
+}
+
+@keyframes nodeGlowHover {
+    from {
+        filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.3));
+    }
+    to {
+        filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.5));
+    }
+}
+
+/* Vertical Connector with Arrow */
+.connector-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 8px 0;
+}
+
+.vertical-connector {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    min-height: 48px;
+    animation: connectorGrow 0.6s ease-out;
+    animation-fill-mode: both;
+    animation-delay: 0.2s;
+}
+
+@keyframes connectorGrow {
+    from {
+        height: 0;
+        opacity: 0;
+    }
+    to {
+        height: 48px;
+        opacity: 1;
+    }
+}
+
+.arrow-down {
+    animation: bounceArrow 2s infinite;
+    animation-delay: 0.8s;
+}
+
+@keyframes bounceArrow {
+    0%, 100% {
+        transform: translate(-50%, 0);
+        opacity: 0.8;
+    }
+    50% {
+        transform: translate(-50%, 4px);
+        opacity: 1;
+    }
+}
+
+/* Horizontal Connector */
+.horizontal-connector {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 0 auto;
+    animation: horizontalLineGrow 0.6s ease-out;
+    animation-fill-mode: both;
+    animation-delay: 0.3s;
+}
+
+@keyframes horizontalLineGrow {
+    from {
+        opacity: 0;
+        transform: scaleX(0);
+    }
+    to {
+        opacity: 1;
+        transform: scaleX(1);
+    }
+}
+
+.top-line {
+    animation: lineFlow 1.5s ease-in-out infinite;
+    animation-delay: 0.5s;
+}
+
+@keyframes lineFlow {
+    0%, 100% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+/* Children List Animation */
+.children-list {
+    animation: childrenFadeIn 0.6s ease-out;
+    animation-fill-mode: both;
+    animation-delay: 0.4s;
+}
+
+@keyframes childrenFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Single Node State */
+.single-node {
+    animation: singleNodeEntry 0.5s ease-out;
+}
+
+@keyframes singleNodeEntry {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Empty State */
+.empty-state {
+    animation: emptyStateFade 0.5s ease-out;
+}
+
+@keyframes emptyStateFade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .tree-container {
+        padding: 1rem;
+    }
+
+    .children-list {
+        gap: 1.5rem !important;
+    }
+
+    .node-entry {
+        min-width: 140px;
+        padding: 0.75rem;
+        font-size: 0.85rem;
+    }
+
+    .arrow-down {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .children-list {
+        gap: 1rem !important;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .node-entry {
+        min-width: 120px;
+        padding: 0.5rem;
+    }
+}
+
+

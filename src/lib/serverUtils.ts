@@ -105,11 +105,27 @@ export async function buildDownlineTree(startBrokerId: string): Promise<Downline
         }
     });
 
-    function buildTree(brokerId: string): DownlineTreeData | null {
+    /**
+     * Builds tree recursively with depth restriction.
+     * Only includes nodes up to depth 2 (3 levels total including root):
+     * - Depth 0: The logged-in broker (root, self) - commission not applicable
+     * - Depth 1: Direct downline (generates Level 1 commission = 2% for root)
+     * - Depth 2: Level 1's downline (generates Level 2 commission = 0.5% for root)
+     * 
+     * Depth 3 and beyond are excluded because they would generate Level 3 commission (0%).
+     * 
+     * Example: vikas (depth 0) → anup (depth 1) → shubham (depth 2) → vijay (depth 3, hidden)
+     */
+    function buildTree(brokerId: string, depth: number = 0): DownlineTreeData | null {
         const profile = profilesMap.get(brokerId);
         if (!profile) return null;
 
-        const children = (childrenMap.get(brokerId) || []).map(p => buildTree(p.id)).filter(Boolean) as DownlineTreeData[];
+        // Include children only if current depth is less than 2
+        // This gives us depths: 0 (root), 1 (direct), 2 (level 1), stopping before depth 3 (level 2, 0% commission)
+        const children = depth < 2 
+            ? (childrenMap.get(brokerId) || []).map(p => buildTree(p.id, depth + 1)).filter(Boolean) as DownlineTreeData[]
+            : [];
+
         return {
             id: profile.id,
             full_name: profile.full_name,
@@ -117,7 +133,7 @@ export async function buildDownlineTree(startBrokerId: string): Promise<Downline
         };
     }
 
-    return buildTree(startBrokerId);
+    return buildTree(startBrokerId, 0);
 }
 
 /**
