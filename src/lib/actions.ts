@@ -1938,15 +1938,43 @@ export async function manageBrokerWallet(values: z.infer<typeof manageWalletSche
     const increment = type === 'credit' ? amount : -amount;
     
     try {
-        // First update or create the wallet
-        const { error: walletError } = await supabaseAdmin.rpc('upsert_wallet_balance', {
-            wallet_id: brokerId,
-            wallet_type: walletType,
-            increment_amount: increment
-        });
+        // Validate that the wallet exists first
+        const { data: existingWallet, error: fetchError } = await supabaseAdmin
+            .from('wallets')
+            .select('*')
+            .eq('owner_id', brokerId)
+            .single();
 
-        if (walletError) {
-            throw new Error(`Failed to update wallet: ${walletError.message}`);
+        if (fetchError && fetchError.code !== 'PGRST116') {
+            // PGRST116 is "not found" which is expected for new wallets
+            throw new Error(`Failed to fetch wallet: ${fetchError.message}`);
+        }
+
+        // If wallet doesn't exist, create it
+        if (!existingWallet) {
+            const { error: createError } = await supabaseAdmin
+                .from('wallets')
+                .insert({
+                    owner_id: brokerId,
+                    direct_sale_balance: walletType === 'direct' ? increment : 0,
+                    downline_sale_balance: walletType === 'downline' ? increment : 0,
+                    total_balance: increment,
+                });
+
+            if (createError) {
+                throw new Error(`Failed to create wallet: ${createError.message}`);
+            }
+        } else {
+            // Update existing wallet
+            const { error: walletError } = await supabaseAdmin.rpc('upsert_wallet_balance', {
+                wallet_id: brokerId,
+                wallet_type: walletType,
+                increment_amount: increment
+            });
+
+            if (walletError) {
+                throw new Error(`Failed to update wallet: ${walletError.message}`);
+            }
         }
         
         // Then create the transaction record
@@ -1967,12 +1995,15 @@ export async function manageBrokerWallet(values: z.infer<typeof manageWalletSche
             throw new Error(`Failed to create transaction: ${transactionError.message}`);
         }
 
+        logger.dev(`✅ Wallet transaction successful:`, { brokerId, type, amount, walletType });
+
         revalidatePath('/admin/brokers');
+        revalidatePath('/admin/associates');
         revalidatePath('/broker/dashboard');
         revalidatePath('/broker/wallets');
     } catch (error) {
-        logger.error("Error managing wallet:", error);
-        throw new Error("Failed to process wallet transaction.");
+        logger.error("❌ Error managing wallet:", error);
+        throw error instanceof Error ? error : new Error("Failed to process wallet transaction.");
     }
 }
 
