@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Plot, PlotFormValidationSchema } from '@/lib/schema';
 import { getBrokersClient } from '@/lib/clientActions';
+import { Broker } from '@/lib/types';
 
 export type PlotFormValues = z.infer<typeof PlotFormValidationSchema>;
 
@@ -22,12 +23,6 @@ interface PlotFormProps {
     onSubmit: (values: PlotFormValues) => void;
     initialData?: Plot | null;
     isSubmitting: boolean;
-}
-
-interface Broker {
-    id: string;
-    full_name: string | null;
-    email?: string;
 }
 
 export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting }: PlotFormProps) {
