@@ -143,7 +143,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Project Name</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="e.g. Green Valley" {...field} />
+                                            <Input placeholder="e.g. Green Valley" {...field} disabled={!!initialData} className="bg-gray-100" />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -156,7 +156,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Type</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="e.g. Residential" {...field} />
+                                            <Input placeholder="e.g. Residential" {...field} disabled={!!initialData} className="bg-gray-100" />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -172,7 +172,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Block</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="e.g. A" {...field} />
+                                            <Input placeholder="e.g. A" {...field} disabled={!!initialData} className="bg-gray-100" />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -185,7 +185,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Plot Number</FormLabel>
                                         <FormControl>
-                                            <Input type="number" placeholder="e.g. 101" {...field} />
+                                            <Input type="number" placeholder="e.g. 101" {...field} disabled={!!initialData} className="bg-gray-100" />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -245,19 +245,21 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     </FormItem>
                                 )}
                             />
-                            <FormField
-                                control={form.control}
-                                name="buyerName"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Buyer Name</FormLabel>
-                                        <FormControl>
-                                            <Input placeholder="e.g. John Doe" {...field} value={field.value ?? ''} />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
+                            {status !== 'available' && (
+                                <FormField
+                                    control={form.control}
+                                    name="buyerName"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Buyer Name</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="e.g. John Doe" {...field} value={field.value ?? ''} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
                         </div>
 
                         {/* Booked Plot Fields - Show only when status is 'booked' */}
@@ -366,21 +368,8 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                 </div>
 
                                 <div className="border-t pt-4">
-                                    <h4 className="text-sm font-medium mb-3 text-muted-foreground">Commission & Broker Details</h4>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField
-                                            control={form.control}
-                                            name="commissionRate"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Commission Rate (%)</FormLabel>
-                                                    <FormControl>
-                                                        <Input type="number" placeholder="e.g. 2.5" {...field} value={field.value ?? ''} />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
+                                    <h4 className="text-sm font-medium mb-3 text-muted-foreground">Broker Details</h4>
+                                    <div className="grid grid-cols-1 gap-4">
                                         <FormField
                                             control={form.control}
                                             name="brokerId"
@@ -411,21 +400,6 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
-                                    <div className="mt-4">
-                                        <FormField
-                                            control={form.control}
-                                            name="sellerName"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Seller Name</FormLabel>
-                                                    <FormControl>
-                                                        <Input placeholder="e.g. Jane Smith" {...field} value={field.value ?? ''} />
-                                                    </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
                                             )}

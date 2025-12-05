@@ -8,6 +8,7 @@ import { Plot, PlotSchema, Wallet, Transaction, WithdrawalRequest } from './sche
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { logger } from './utils/logger';
+import { GAJ_COMMISSION_RATES, calculateCommission } from './commissionConfig';
 import { 
     getSupabaseAdminClient, 
     getAuthenticatedUser, 
@@ -177,17 +178,15 @@ export async function addPlot(data: PlotFormValues) {
         }
 
         // If plot is being created as sold, process commission immediately
-        if (processedData.status === 'sold' && processedData.brokerId && processedData.salePrice && processedData.commissionRate) {
-            // Validate that we have valid numbers
-            if (isNaN(processedData.salePrice) || processedData.salePrice <= 0) {
-                throw new Error("Sale price must be a valid positive number");
-            }
-            if (isNaN(processedData.commissionRate) || processedData.commissionRate <= 0) {
-                throw new Error("Commission rate must be a valid positive number");
+        if (processedData.status === 'sold' && processedData.brokerId && processedData.area) {
+            // Validate that we have a valid plot area (in gaj)
+            if (isNaN(processedData.area) || processedData.area <= 0) {
+                throw new Error("Plot area must be a valid positive number (in gaj)");
             }
             
-            // Calculate and distribute commission
-            await processCommissionCalculation(processedData.brokerId, processedData.salePrice, {
+            // Calculate and distribute commission using GAJ-BASED system
+            // Pass area (gaj) as the second parameter instead of sale price
+            await processCommissionCalculation(processedData.brokerId, processedData.area, {
                 ...processedData,
                 id: newPlot.id
             });
@@ -435,39 +434,37 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
         const shouldCalculateCommission = (
             isFirstSoldTransition &&
             processedData.brokerId &&
-            actualSaleAmount &&
-            processedData.commissionRate &&
-            actualSaleAmount > 0 &&
-            processedData.commissionRate > 0
+            (processedData.area || originalPlot.area) &&
+            (processedData.area || originalPlot.area) > 0
         );
 
-        logger.dev('🎯 Should calculate commission?', shouldCalculateCommission, { isFirstSoldTransition });
+        logger.dev('Should calculate commission?', shouldCalculateCommission, { isFirstSoldTransition });
         
         if (shouldCalculateCommission) {
-            logger.dev('✅ Processing commission calculation...');
+            logger.dev('Processing commission calculation (GAJ-BASED)...');
             
-            // Validate that we have valid numbers
-            if (isNaN(actualSaleAmount) || actualSaleAmount <= 0) {
-                throw new Error("Sale amount must be a valid positive number");
-            }
-            if (isNaN(processedData.commissionRate) || processedData.commissionRate <= 0) {
-                throw new Error("Commission rate must be a valid positive number");
+            // Get plot area (in gaj) for commission calculation
+            const plotArea = processedData.area || originalPlot.area;
+            
+            // Validate that we have a valid plot area
+            if (isNaN(plotArea) || plotArea <= 0) {
+                throw new Error("Plot area must be a valid positive number (in gaj)");
             }
             
-            // Process commission calculation asynchronously - don't block the response
-            processCommissionCalculation(processedData.brokerId, actualSaleAmount, {
+            // Process commission calculation asynchronously using GAJ-BASED system
+            processCommissionCalculation(processedData.brokerId, plotArea, {
                 ...originalPlot,
                 ...processedData,
                 id: id
             }).then(() => {
-                logger.dev('✅ Commission calculation completed successfully');
+                logger.dev('Commission calculation completed successfully');
                 // Revalidate again after commission processing
                 revalidatePath('/admin/commissions');
                 revalidatePath('/admin/brokers');
                 revalidatePath('/admin/associates');
                 revalidatePath('/broker/wallets');
             }).catch((error) => {
-                logger.error('❌ Error in commission calculation:', error);
+                logger.error('Error in commission calculation:', error);
                 // Don't throw - just log the error
             });
         } else {
@@ -2474,20 +2471,16 @@ export async function processCommissionCalculation(
             logger.dev('No upline structure found, processing only direct commission for seller.');
         }
         
-        // Commission percentages for each level
-        const commissionRates = {
-            direct: 6,    // Direct seller: 6%
-            1: 2,         // Level 1 upline (immediate referrer): 2%
-            2: 0.5,       // Level 2 upline (referrer of Level 1): 0.5%
-            // Level 3 and above: 0% (no commission)
-        };
+        // Commission amounts for each level (GAJ-BASED SYSTEM)
+        // Direct: ₹1,000 per gaj | Level 1: ₹200 per gaj | Level 2: ₹50 per gaj
+        // Get plot size from saleAmount parameter (which contains the plot area in gaj)
+        // NOTE: For gaj-based system, saleAmount parameter actually contains plot size in gaj
+        const plotSizeInGaj = saleAmount; // This is plot area in gaj
         
-        // Calculate seller's direct sale commission
-        // Use plotData.commissionRate if provided, otherwise use default 6%
-        const plotCommissionRate = plotData?.commissionRate || commissionRates.direct;
-        const sellerDirectCommission = (saleAmount * plotCommissionRate) / 100;
+        // Calculate seller's direct sale commission using gaj-based rates
+        const sellerDirectCommission = calculateCommission('direct', plotSizeInGaj);
         
-        logger.dev(`💰 Calculating seller commission: ${saleAmount} × ${plotCommissionRate}% = ₹${sellerDirectCommission}`);
+        logger.dev(`💰 Calculating seller commission (GAJ-BASED): ${plotSizeInGaj} gaj × ₹${GAJ_COMMISSION_RATES.direct}/gaj = ₹${sellerDirectCommission}`);
         
         // Use RPC function to update or create seller's wallet with full plot details
         const { error: sellerWalletError } = await supabaseAdmin.rpc('upsert_seller_commission', {
@@ -2636,10 +2629,19 @@ export async function processCommissionCalculation(
                 
             if (!uplineProfile) break;
             
-            const percentage = commissionRates[level as keyof typeof commissionRates];
-            const commissionAmount = (saleAmount * percentage) / 100;
-            
-            logger.dev(`💰 Level ${level} upline commission: ${saleAmount} × ${percentage}% = ₹${commissionAmount} for ${uplineProfile.full_name}`);
+            // Calculate upline commission using gaj-based rates
+            let commissionAmount = 0;
+            if (level === 1) {
+                commissionAmount = calculateCommission('level1', plotSizeInGaj);
+                logger.dev(`💰 Level ${level} upline commission: ${plotSizeInGaj} gaj × ₹${GAJ_COMMISSION_RATES.level1}/gaj = ₹${commissionAmount} for ${uplineProfile.full_name}`);
+            } else if (level === 2) {
+                commissionAmount = calculateCommission('level2', plotSizeInGaj);
+                logger.dev(`💰 Level ${level} upline commission: ${plotSizeInGaj} gaj × ₹${GAJ_COMMISSION_RATES.level2}/gaj = ₹${commissionAmount} for ${uplineProfile.full_name}`);
+            } else {
+                // Level 3+ no commission
+                logger.dev(`💰 Level ${level} upline: No commission (only levels 1-2 receive commissions)`);
+                break;
+            }
             
             // Create commission record with preserved timestamp if available
             const timestampKey = `${uplineProfile.id}_${level}`;
@@ -2653,8 +2655,8 @@ export async function processCommissionCalculation(
                 receiver_name: uplineProfile.full_name || 'Unknown',
                 level: level,
                 amount: commissionAmount,
-                percentage: percentage,
-                sale_amount: saleAmount,
+                percentage: null, // No percentage in gaj-based system
+                sale_amount: plotSizeInGaj,
                 plot_id: plotData?.id || null,
                 project_name: plotData?.projectName || null,
             };
@@ -2683,8 +2685,8 @@ export async function processCommissionCalculation(
                         .from('commissions')
                         .update({
                             amount: commissionAmount,
-                            percentage: percentage,
-                            sale_amount: saleAmount,
+                            percentage: null, // Gaj-based system, no percentage
+                            sale_amount: plotSizeInGaj,
                             seller_name: sellerProfile.full_name || 'Unknown',
                             receiver_name: uplineProfile.full_name || 'Unknown',
                         })
@@ -2862,12 +2864,11 @@ export async function processCommissionCalculation(
         
         const totalDistributed = sellerDirectCommission + commissions.reduce((sum, c) => sum + c.amount, 0);
         
-        logger.dev('\n🎉 Commission Distribution Summary:');
-        logger.dev(`   Seller Direct Commission: ₹${sellerDirectCommission} (${plotCommissionRate}%)`);
+        logger.dev('\n🎉 Commission Distribution Summary (GAJ-BASED):');
+        logger.dev(`   Plot Size: ${plotSizeInGaj} gaj`);
+        logger.dev(`   Seller Direct Commission: ₹${sellerDirectCommission} (₹${GAJ_COMMISSION_RATES.direct}/gaj)`);
         logger.dev(`   Upline Commissions (${commissions.length} levels): ₹${commissions.reduce((sum, c) => sum + c.amount, 0)}`);
         logger.dev(`   Total Distributed: ₹${totalDistributed}`);
-        logger.dev(`   Sale Amount: ₹${saleAmount}`);
-        logger.dev(`   Company Profit: ₹${saleAmount - totalDistributed}`);
         
         return {
             success: true,
@@ -3071,7 +3072,7 @@ export async function setBookedPlotAmounts(plotId: string, totalAmount: number, 
         // Fetch plot and payments
         const { data: plot, error: plotErr } = await supabaseAdmin
             .from('plots')
-            .select('id, status, broker_id, commission_status, total_plot_amount, booking_amount')
+            .select('id, status, broker_id, commission_status, total_plot_amount, booking_amount, area')
             .eq('id', plotId)
             .single();
         if (plotErr || !plot) throw new Error('Plot not found');
@@ -3120,7 +3121,9 @@ export async function setBookedPlotAmounts(plotId: string, totalAmount: number, 
         // Commission distribution if just transitioned and pending
         if (thresholdReached && plot.status.toLowerCase() === 'booked' && plot.commission_status === 'pending' && plot.broker_id) {
             try {
-                const result = await processCommissionCalculation(plot.broker_id, totalAmount, { id: plotId, projectName: 'N/A', plotNumber: 'N/A', commissionRate: undefined });
+                // Use GAJ-BASED system for commission calculation
+                const plotSizeInGaj = plot.area || 0;
+                const result = await processCommissionCalculation(plot.broker_id, plotSizeInGaj, { id: plotId, projectName: 'N/A', plotNumber: 'N/A' });
                 if (result.success) {
                     await supabaseAdmin
                         .from('plots')
@@ -3220,40 +3223,40 @@ export async function calculateCommissionForSoldPlots() {
         let processedCount = 0;
         let totalCommissionDistributed = 0;
 
-        // STEP 3: Recalculate commissions for each plot
+        // STEP 3: Recalculate commissions for each plot using GAJ-BASED system
         for (const plot of plotsWithBroker) {
             try {
                 // Use broker_id for booked plots, fall back to updated_by for old sold plots
                 const brokerId = plot.broker_id || plot.updated_by;
-                // Use total_plot_amount for booked plots, fall back to sale_price for old sold plots
-                const saleAmount = plot.total_plot_amount || plot.sale_price;
+                // Use plot area (in gaj) for GAJ-BASED commission
+                const plotSizeInGaj = plot.area || 0;
                 
-                logger.dev(`\n🔄 Processing plot ${plot.plot_number} (${plot.project_name})`);
-                logger.dev(`   Sale Amount: ₹${saleAmount}`);
+                logger.dev(`\n Processing plot ${plot.plot_number} (${plot.project_name})`);
+                logger.dev(`   Plot Size: ${plotSizeInGaj} gaj`);
                 logger.dev(`   Broker ID: ${brokerId}`);
-                
-                // Use default commission rate of 6% to match the direct seller rate
-                const defaultCommissionRate = plot.commission_rate || 6;
-                logger.dev(`   Commission Rate: ${defaultCommissionRate}%`);
 
-                // Calculate commission using our existing function
+                // Calculate commission using GAJ-BASED system
                 const result = await processCommissionCalculation(
                     brokerId,
-                    saleAmount,
+                    plotSizeInGaj,
                     {
                         id: plot.id,
                         projectName: plot.project_name,
-                        plotNumber: plot.plot_number,
-                        commissionRate: defaultCommissionRate
+                        plotNumber: plot.plot_number
                     }
                 );
 
-                logger.dev(`   ✅ Commission calculated for plot ${plot.plot_number}`);
+                logger.dev(`   Commission calculated for plot ${plot.plot_number}`);
                 processedCount++;
-                totalCommissionDistributed += (saleAmount * defaultCommissionRate) / 100;
+                // For logging, calculate what the gaj-based commission amounts are
+                const totalCommissions = 
+                    calculateCommission('direct', plotSizeInGaj) +
+                    calculateCommission('level1', plotSizeInGaj) +
+                    calculateCommission('level2', plotSizeInGaj);
+                totalCommissionDistributed += totalCommissions;
 
             } catch (plotError) {
-                logger.error(`❌ Error processing plot ${plot.plot_number}:`, plotError);
+                logger.error(`Error processing plot ${plot.plot_number}:`, plotError);
                 // Continue with other plots even if one fails
             }
         }
@@ -3316,19 +3319,18 @@ export async function recalculateCommissionForPlot(plotId: string) {
             throw new Error('No broker information found for this plot');
         }
 
-        // Use total_plot_amount for booked plots, sale_price for old sold plots
-        const saleAmount = plot.total_plot_amount || plot.sale_price;
+        // Use plot area (in gaj) for GAJ-BASED commission calculation
+        const plotSizeInGaj = plot.area || 0;
         
-        if (!saleAmount) {
-            throw new Error('No sale amount found for this plot');
+        if (!plotSizeInGaj || plotSizeInGaj <= 0) {
+            throw new Error('No plot area (gaj) found for this plot');
         }
 
         logger.dev(`📊 Plot Details:`);
         logger.dev(`   Project: ${plot.project_name}`);
         logger.dev(`   Plot #: ${plot.plot_number}`);
-        logger.dev(`   Sale Amount: ₹${saleAmount}`);
+        logger.dev(`   Plot Size: ${plotSizeInGaj} gaj`);
         logger.dev(`   Broker ID: ${brokerId}`);
-        logger.dev(`   Commission Rate: ${plot.commission_rate || 6}%`);
 
         // STEP 1: Get existing commissions for this plot (to preserve timestamps and IDs)
         logger.dev(`� Fetching existing commissions for plot ${plot.plot_number}...`);
@@ -3404,20 +3406,19 @@ export async function recalculateCommissionForPlot(plotId: string) {
         // We keep commissions and transactions to maintain historical timestamps.
         logger.dev(`🔐 Preserving existing commission & transaction timestamps (no deletion).`);
 
-        // STEP 3: Recalculate commissions (will UPDATE existing, preserve timestamps)        // STEP 3: Calculate new commissions
+        // STEP 3: Recalculate commissions using GAJ-BASED system
         const result = await processCommissionCalculation(
             brokerId,
-            saleAmount,
+            plotSizeInGaj,
             {
                 id: plot.id,
                 projectName: plot.project_name,
-                plotNumber: plot.plot_number,
-                commissionRate: plot.commission_rate || 6,
+                plotNumber: plot.plot_number
             },
             originalTimestamps // Pass preserved timestamps (used now for updates)
         );
 
-        logger.dev(`✅ Commission recalculation complete`);
+        logger.dev(`Commission recalculation complete`);
 
         // Revalidate relevant pages
         revalidatePath('/admin/associates');
@@ -3847,13 +3848,13 @@ async function triggerCommissionDistribution(plotId: string) {
             commissionStatus: plot.commission_status
         });
 
-        // Use the existing commission calculation function
-        const commissionRate = plot.commission_rate || 6; // Default to 6% if not set
-        const result = await processCommissionCalculation(brokerId, soldAmount, {
+        // Use the existing commission calculation function with GAJ-BASED system
+        // Pass plot area (in gaj) instead of amount
+        const plotSizeInGaj = plot.area || 0;
+        const result = await processCommissionCalculation(brokerId, plotSizeInGaj, {
             id: plot.id,
             projectName: plot.project_name,
-            plotNumber: plot.plot_number,
-            commissionRate: commissionRate
+            plotNumber: plot.plot_number
         });
 
         if (result.success) {
@@ -4083,6 +4084,21 @@ export async function submitContactForm(formData: any) {
 
         if (error) {
             throw new Error(`Failed to submit contact form: ${error.message}`);
+        }
+
+        // Send WhatsApp notification
+        try {
+            const whatsappMessage = `New Contact Form Submission:\n\nName: ${formData.firstName} ${formData.lastName}\nEmail: ${formData.email}\nPhone: ${formData.phone || 'Not provided'}\n\nMessage:\n${formData.message}`;
+            
+            // Format message for WhatsApp URL (encode for URL)
+            const encodedMessage = encodeURIComponent(whatsappMessage);
+            const whatsappNumber = '918810317477'; // +91 88103 17477 without +
+            const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodedMessage}`;
+            
+            logger.info(`WhatsApp notification available at: ${whatsappUrl}`);
+        } catch (whatsappError) {
+            // Log WhatsApp error but don't throw - contact form should still succeed
+            logger.error('Error preparing WhatsApp notification:', whatsappError);
         }
 
         return contact;
@@ -4577,9 +4593,8 @@ export async function getProjectedCommissionWallet() {
                 id,
                 plot_number,
                 project_name,
-                total_plot_amount,
-                paid_percentage,
-                commission_rate
+                area,
+                paid_percentage
             `)
             .eq('broker_id', user.id)
             .ilike('status', 'booked')
@@ -4598,15 +4613,16 @@ export async function getProjectedCommissionWallet() {
             };
         }
 
-        // Calculate projected commission for each plot (6% direct commission)
+        // Calculate projected commission for each plot using GAJ-BASED system
+        // Direct broker: ₹1,000 per gaj
         const projectedPlots = bookedPlots.map(plot => {
-            const commissionRate = plot.commission_rate || 6;
-            const projectedCommission = (plot.total_plot_amount * commissionRate) / 100;
+            const plotSizeInGaj = plot.area || 0;
+            const projectedCommission = calculateCommission('direct', plotSizeInGaj);
             return {
                 id: plot.id,
                 plotNumber: plot.plot_number,
                 projectName: plot.project_name,
-                totalAmount: plot.total_plot_amount,
+                totalArea: plotSizeInGaj,
                 paidPercentage: plot.paid_percentage || 0,
                 projectedCommission: projectedCommission
             };
@@ -4615,10 +4631,11 @@ export async function getProjectedCommissionWallet() {
         // Calculate totals
         const totalProjectedAmount = projectedPlots.reduce((sum, p) => sum + p.projectedCommission, 0);
 
-        logger.dev('📊 Calculated projected commission:', {
+        logger.dev('📊 Calculated projected commission (GAJ-BASED):', {
             brokerId: user.id,
             totalProjectedAmount,
-            plotCount: projectedPlots.length
+            plotCount: projectedPlots.length,
+            ratePerGaj: GAJ_COMMISSION_RATES.direct
         });
 
         return {
@@ -4629,5 +4646,139 @@ export async function getProjectedCommissionWallet() {
     } catch (error) {
         logger.error('Error in getProjectedCommissionWallet:', error);
         throw new Error(`Failed to get projected commission: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+// Gallery Management Functions
+export async function getAdminGalleryImages() {
+    try {
+        const supabaseAdmin = getSupabaseAdminClient();
+        const authData = await getAuthenticatedUser('admin');
+        
+        if (!authData) {
+            throw new Error('Unauthorized');
+        }
+
+        // Fetch all gallery images ordered by order_index
+        const { data, error } = await supabaseAdmin
+            .from('property_gallery')
+            .select('*')
+            .order('order_index', { ascending: true })
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        return data || [];
+    } catch (error) {
+        logger.error('Error in getAdminGalleryImages:', error);
+        throw new Error(`Failed to fetch gallery images: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+export async function addGalleryImage(imageData: {
+    project_name: string;
+    title: string;
+    description?: string;
+    image_url: string;
+    order_index?: number;
+}) {
+    try {
+        const supabaseAdmin = getSupabaseAdminClient();
+        const authData = await getAuthenticatedUser('admin');
+        
+        if (!authData) {
+            throw new Error('Unauthorized');
+        }
+
+        // Insert new gallery image
+        const { data, error } = await supabaseAdmin
+            .from('property_gallery')
+            .insert({
+                project_name: imageData.project_name,
+                title: imageData.title,
+                description: imageData.description || null,
+                image_url: imageData.image_url,
+                order_index: imageData.order_index || 0,
+                is_active: true,
+                created_by: authData.user.id,
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        revalidatePath('/admin/gallery');
+        revalidatePath('/explore');
+
+        return data;
+    } catch (error) {
+        logger.error('Error in addGalleryImage:', error);
+        throw new Error(`Failed to add gallery image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+export async function updateGalleryImage(id: string, imageData: Partial<{
+    project_name: string;
+    title: string;
+    description: string;
+    image_url: string;
+    order_index: number;
+    is_active: boolean;
+}>) {
+    try {
+        const supabaseAdmin = getSupabaseAdminClient();
+        const authData = await getAuthenticatedUser('admin');
+        
+        if (!authData) {
+            throw new Error('Unauthorized');
+        }
+
+        // Update gallery image
+        const { data, error } = await supabaseAdmin
+            .from('property_gallery')
+            .update({
+                ...imageData,
+                updated_by: authData.user.id,
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        revalidatePath('/admin/gallery');
+        revalidatePath('/explore');
+
+        return data;
+    } catch (error) {
+        logger.error('Error in updateGalleryImage:', error);
+        throw new Error(`Failed to update gallery image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+export async function deleteGalleryImage(id: string) {
+    try {
+        const supabaseAdmin = getSupabaseAdminClient();
+        const authData = await getAuthenticatedUser('admin');
+        
+        if (!authData) {
+            throw new Error('Unauthorized');
+        }
+
+        // Delete gallery image
+        const { error } = await supabaseAdmin
+            .from('property_gallery')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+
+        revalidatePath('/admin/gallery');
+        revalidatePath('/explore');
+
+        return { success: true };
+    } catch (error) {
+        logger.error('Error in deleteGalleryImage:', error);
+        throw new Error(`Failed to delete gallery image: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
