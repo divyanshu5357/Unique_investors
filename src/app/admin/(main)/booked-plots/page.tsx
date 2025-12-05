@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, History, IndianRupee, TrendingUp, Clock } from 'lucide-react';
-import { getBookedPlots, setBookedPlotAmounts } from '@/lib/actions';
+import { Plus, History, IndianRupee, TrendingUp, Clock, Trash2 } from 'lucide-react';
+import { getBookedPlots, setBookedPlotAmounts, cancelBookedPlot } from '@/lib/actions';
 import { Loader2 } from 'lucide-react';
 import { AddPaymentDialog } from '@/components/admin/AddPaymentDialog';
 import { PaymentHistoryDialog } from '@/components/admin/PaymentHistoryDialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { toast } from '@/hooks/use-toast';
 
 interface BookedPlot {
     id: string;
@@ -36,11 +38,56 @@ export default function BookedPlotsPage() {
     const [editingAmountsId, setEditingAmountsId] = useState<string | null>(null);
     const [amountInputs, setAmountInputs] = useState<{ total: string; booking: string }>({ total: '', booking: '' });
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+    const [cancelingPlotId, setCancelingPlotId] = useState<string | null>(null);
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [isCanceling, setIsCanceling] = useState(false);
 
     const handleCloseHistory = () => {
         setIsHistoryDialogOpen(false);
         // Refresh plots to reflect any backfilled initial booking payment
         fetchPlots();
+    };
+
+    const handleCancelClick = (plot: BookedPlot) => {
+        setCancelingPlotId(plot.id);
+        setSelectedPlot(plot);
+        setShowCancelDialog(true);
+    };
+
+    const handleConfirmCancel = async () => {
+        if (!cancelingPlotId) return;
+        
+        try {
+            setIsCanceling(true);
+            const result = await cancelBookedPlot(cancelingPlotId);
+            
+            if (result.success) {
+                toast({
+                    title: 'Success',
+                    description: result.message,
+                    variant: 'default'
+                });
+                // Refresh the booked plots list
+                fetchPlots();
+            } else {
+                toast({
+                    title: 'Error',
+                    description: result.message,
+                    variant: 'destructive'
+                });
+            }
+        } catch (error) {
+            console.error('Error canceling booking:', error);
+            toast({
+                title: 'Error',
+                description: 'Failed to cancel booking',
+                variant: 'destructive'
+            });
+        } finally {
+            setIsCanceling(false);
+            setShowCancelDialog(false);
+            setCancelingPlotId(null);
+        }
     };
 
     const fetchPlots = async () => {
@@ -175,7 +222,7 @@ export default function BookedPlotsPage() {
                 <CardHeader>
                     <CardTitle>Booked Plots</CardTitle>
                     <CardDescription>
-                        Manage payments for booked plots. Commission will be distributed automatically when 75% payment is received.
+                        Manage payments for booked plots. Commission will be distributed automatically when 50% payment is received.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -290,7 +337,7 @@ export default function BookedPlotsPage() {
                                                         <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                                                             <div
                                                                 className={`h-2 rounded-full ${
-                                                                    percentage >= 75 ? 'bg-green-600' : 'bg-blue-600'
+                                                                    percentage >= 50 ? 'bg-green-600' : 'bg-blue-600'
                                                                 }`}
                                                                 style={{ width: `${Math.min(percentage, 100)}%` }}
                                                             />
@@ -321,6 +368,17 @@ export default function BookedPlotsPage() {
                                                         >
                                                             <History className="h-4 w-4" />
                                                         </Button>
+                                                        {(percentage === null || percentage === undefined || percentage < 50) && plot.status !== 'Sold' && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="destructive"
+                                                                onClick={() => handleCancelClick(plot)}
+                                                                className="gap-2"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                                Cancel
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -354,6 +412,49 @@ export default function BookedPlotsPage() {
                     />
                 </>
             )}
+
+            {/* Cancel Booking Dialog */}
+            <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Booking?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to cancel this booking for Plot #{selectedPlot?.plot_number}?
+                            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-md border border-red-200 dark:border-red-800">
+                                <p className="text-sm text-red-800 dark:text-red-200">
+                                    <strong>⚠️ This action will:</strong>
+                                </p>
+                                <ul className="text-xs text-red-700 dark:text-red-300 mt-2 space-y-1 ml-4">
+                                    <li>• Reset the plot status to "Available"</li>
+                                    <li>• Clear all booking information</li>
+                                    <li>• Make it available for other buyers</li>
+                                    <li>• Clear buyer and broker details</li>
+                                    <li>• This cannot be undone</li>
+                                </ul>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="flex justify-end gap-2 mt-6">
+                        <AlertDialogCancel disabled={isCanceling}>
+                            No, Keep It
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleConfirmCancel}
+                            disabled={isCanceling}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {isCanceling ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Canceling...
+                                </>
+                            ) : (
+                                'Yes, Cancel Booking'
+                            )}
+                        </AlertDialogAction>
+                    </div>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

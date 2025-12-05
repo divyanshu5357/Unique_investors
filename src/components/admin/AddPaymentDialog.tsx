@@ -186,7 +186,7 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
                             )}
                         />
 
-                        {/* Warning for 75% threshold */}
+                        {/* Warning for 50% threshold */}
                         {(!plot.total_plot_amount || plot.total_plot_amount <= 0) && (
                             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                                 <p className="text-sm text-red-800">
@@ -194,10 +194,10 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
                                 </p>
                             </div>
                         )}
-                        {plot.total_plot_amount && plot.total_plot_amount > 0 && plot.paid_percentage !== null && plot.paid_percentage < 75 && (
+                        {plot.total_plot_amount && plot.total_plot_amount > 0 && plot.paid_percentage !== null && plot.paid_percentage < 50 && (
                             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                                 <p className="text-sm text-yellow-800">
-                                    <strong>Note:</strong> When cumulative payments reach 75% of the total, the plot status will automatically change to "Sold" and commissions will be distributed.
+                                    <strong>Note:</strong> When cumulative payments reach 50% of the total, the plot status will automatically change to "Sold" and commissions will be distributed.
                                 </p>
                             </div>
                         )}

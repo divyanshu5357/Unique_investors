@@ -3107,7 +3107,7 @@ export async function setBookedPlotAmounts(plotId: string, totalAmount: number, 
         };
 
         // If threshold reached and not yet sold, update status
-        const thresholdReached = paidPercentage >= 75;
+        const thresholdReached = paidPercentage >= 50;
         if (thresholdReached && plot.status.toLowerCase() === 'booked') {
             update.status = 'sold';
         }
@@ -3715,7 +3715,7 @@ async function ensureInitialBookingPayment(plotId: string) {
 
 /**
  * Add a new payment to a booked plot
- * Automatically updates paid_percentage and triggers status change to 'Sold' if >= 75%
+ * Automatically updates paid_percentage and triggers status change to 'Sold' if >= 50%
  */
 export async function addPaymentToPlot(values: z.infer<typeof import('./schema').addPaymentSchema>) {
     try {
@@ -3758,7 +3758,7 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
 
         // The trigger function will automatically:
         // 1. Update remaining_amount and paid_percentage
-        // 2. Change status to 'Sold' if paid_percentage >= 75%
+        // 2. Change status to 'Sold' if paid_percentage >= 50%
 
         // Wait a moment for the trigger to complete
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -3782,12 +3782,12 @@ export async function addPaymentToPlot(values: z.infer<typeof import('./schema')
                 brokerId: updatedPlot?.broker_id,
             });
 
-            // Automatically trigger commission distribution at 75%+ payment if not already paid
+            // Automatically trigger commission distribution at 50%+ payment if not already paid
             if (
-                Number(updatedPlot?.paid_percentage) >= 75 &&
+                Number(updatedPlot?.paid_percentage) >= 50 &&
                 updatedPlot?.commission_status === 'pending'
             ) {
-                logger.dev('🎯 Payment reached 75%! Triggering commission distribution...');
+                logger.dev('🎯 Payment reached 50%! Triggering commission distribution...');
                 await triggerCommissionDistribution(values.plotId);
             } else if (updatedPlot?.commission_status === 'paid') {
                 logger.dev('✅ Commission already paid');
@@ -3904,8 +3904,8 @@ export async function cancelBookedPlot(plotId: string) {
             .single();
         if (fetchErr || !plot) throw new Error('Plot not found');
         if (plot.status !== 'booked') throw new Error('Only booked plots can be cancelled');
-        if (plot.paid_percentage !== null && plot.paid_percentage >= 75) {
-            throw new Error('Cannot cancel booking: paid percentage >= 75%');
+        if (plot.paid_percentage !== null && plot.paid_percentage >= 50) {
+            throw new Error('Cannot cancel booking: paid percentage >= 50%');
         }
 
         logger.dev('🚫 Cancelling booked plot:', { plotId, paid_percentage: plot.paid_percentage });
@@ -4577,16 +4577,16 @@ export async function getBrokerAllPlots() {
 }
 
 /**
- * Calculate projected commission for booked plots (not yet at 75% payment)
+ * Calculate projected commission for booked plots (not yet at 50% payment)
  * Uses MLM commission rules: 6% direct, 2% level-1, 0.5% level-2
- * Returns the expected commission that will be received when plot reaches 75% payment
+ * Returns the expected commission that will be received when plot reaches 50% payment
  */
 export async function getProjectedCommissionWallet() {
     try {
         const { user } = await getAuthenticatedUser('broker');
         const supabaseAdmin = getSupabaseAdminClient();
         
-        // Get all booked plots that are NOT yet at 75% payment
+        // Get all booked plots that are NOT yet at 50% payment
         const { data: bookedPlots, error } = await supabaseAdmin
             .from('plots')
             .select(`
@@ -4598,7 +4598,7 @@ export async function getProjectedCommissionWallet() {
             `)
             .eq('broker_id', user.id)
             .ilike('status', 'booked')
-            .lt('paid_percentage', 75);
+            .lt('paid_percentage', 50);
 
         if (error) {
             logger.error('Error fetching booked plots for projection:', error);
@@ -4782,3 +4782,71 @@ export async function deleteGalleryImage(id: string) {
         throw new Error(`Failed to delete gallery image: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
+
+// ============================================
+// PLOT HISTORY / AUDIT TRAIL
+// ============================================
+
+/**
+ * Get complete plot history for broker
+ * Shows all plot status changes: booked -> sold -> cancelled
+ * Immutable audit trail with no edits/deletions
+ */
+export async function getBrokerPlotHistory() {
+    try {
+        const { user } = await getAuthenticatedUser('broker');
+        const supabaseAdmin = getSupabaseAdminClient();
+
+        // Get all plots related to this broker
+        const { data: plots, error } = await supabaseAdmin
+            .from('plots')
+            .select(`
+                id,
+                project_name,
+                plot_number,
+                plot_size_gaj,
+                status,
+                buyer_name,
+                broker_name,
+                booking_date,
+                sale_date,
+                total_plot_amount,
+                paid_percentage,
+                cancel_reason,
+                cancelled_date,
+                created_at,
+                updated_at,
+                payment_history
+            `)
+            .eq('broker_id', user.id)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw new Error(`Failed to fetch plot history: ${error.message}`);
+        }
+
+        return (plots || []).map(plot => ({
+            id: plot.id,
+            plot_id: plot.id,
+            project_name: plot.project_name,
+            plot_number: plot.plot_number,
+            plot_size_gaj: plot.plot_size_gaj || 0,
+            status: plot.status as 'available' | 'booked' | 'sold' | 'cancelled',
+            buyer_name: plot.buyer_name,
+            broker_name: plot.broker_name,
+            booking_date: plot.booking_date,
+            sale_date: plot.sale_date,
+            total_amount: plot.total_plot_amount,
+            paid_percentage: plot.paid_percentage,
+            cancel_reason: plot.cancel_reason,
+            cancelled_date: plot.cancelled_date,
+            payment_history: plot.payment_history || [],
+            created_at: plot.created_at,
+            updated_at: plot.updated_at,
+        }));
+    } catch (error) {
+        logger.error('Error fetching broker plot history:', error);
+        throw new Error('Failed to fetch plot history');
+    }
+}
+

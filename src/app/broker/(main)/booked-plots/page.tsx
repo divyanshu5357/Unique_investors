@@ -275,7 +275,7 @@ Your earning from this booking is being securely held here and will be unlocked 
                                                         <Eye className="h-4 w-4" />
                                                         Details
                                                     </Button>
-                                                    {plot.paid_percentage < 75 && (
+                                                    {(plot.paid_percentage === null || plot.paid_percentage === undefined || plot.paid_percentage < 50) && (
                                                         <Button
                                                             variant="destructive"
                                                             size="sm"
@@ -360,7 +360,7 @@ Your earning from this booking is being securely held here and will be unlocked 
                                     <div>
                                         <p className="text-sm text-muted-foreground">% Paid</p>
                                         <p className="font-medium text-lg">
-                                            <Badge variant={selectedPlot.paid_percentage >= 75 ? 'default' : 'secondary'}>
+                                            <Badge variant={selectedPlot.paid_percentage >= 50 ? 'default' : 'secondary'}>
                                                 {selectedPlot.paid_percentage?.toFixed(2) || '0'}%
                                             </Badge>
                                         </p>
@@ -431,7 +431,7 @@ Your earning from this booking is being securely held here and will be unlocked 
                                     <li>• Reset the plot status to "Available"</li>
                                     <li>• Clear all booking information</li>
                                     <li>• Make it available for other buyers</li>
-                                    <li>• Cancel can only be done before 75% payment</li>
+                                    <li>• Cancel can only be done before 50% payment</li>
                                 </ul>
                             </div>
                         </AlertDialogDescription>

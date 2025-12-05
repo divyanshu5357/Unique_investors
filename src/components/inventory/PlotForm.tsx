@@ -57,6 +57,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
     });
 
     const status = form.watch('status');
+    const isAvailable = status === 'available';
     
     // Check if we should show admin fields (either current status is sold or initial data was sold)
     const shouldShowAdminFields = status === 'sold' || (initialData && initialData.status === 'sold');
@@ -133,6 +134,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                 <DialogHeader>
                     <DialogTitle>{initialData ? 'Edit Plot' : 'Add New Plot'}</DialogTitle>
                 </DialogHeader>
+                
                 <Form {...form}>
                     <form onSubmit={handleFormSubmit} className="grid gap-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -143,7 +145,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Project Name</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="e.g. Green Valley" {...field} disabled={!!initialData} className="bg-gray-100" />
+                                            <Input placeholder="e.g. Green Valley" {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -156,7 +158,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Type</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="e.g. Residential" {...field} disabled={!!initialData} className="bg-gray-100" />
+                                            <Input placeholder="e.g. Residential" {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -172,7 +174,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Block</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="e.g. A" {...field} disabled={!!initialData} className="bg-gray-100" />
+                                            <Input placeholder="e.g. A" {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -185,7 +187,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     <FormItem>
                                         <FormLabel>Plot Number</FormLabel>
                                         <FormControl>
-                                            <Input type="number" placeholder="e.g. 101" {...field} disabled={!!initialData} className="bg-gray-100" />
+                                            <Input type="number" placeholder="e.g. 101" {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -411,7 +413,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                         
                         <DialogFooter>
                             <DialogClose asChild>
-                                <Button type="button" variant="outline">Cancel</Button>
+                                <Button type="button" variant="outline">Close</Button>
                             </DialogClose>
                             <Button type="submit" disabled={isSubmitting}>
                                 {isSubmitting ? 'Saving...' : 'Save Plot'}
