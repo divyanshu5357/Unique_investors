@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Loader2, Eye, Calendar, IndianRupee, Lock } from 'lucide-react';
-import { getBrokerBookedPlots, getProjectedCommissionWallet } from '@/lib/actions';
+import { getBrokerBookedPlots, getProjectedCommissionWallet, cancelBookedPlot } from '@/lib/actions';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 export default function BrokerBookedPlotsPage() {
     const [bookedPlots, setBookedPlots] = useState<any[]>([]);
@@ -18,6 +19,9 @@ export default function BrokerBookedPlotsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedPlot, setSelectedPlot] = useState<any>(null);
     const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+    const [cancelingPlotId, setCancelingPlotId] = useState<string | null>(null);
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [isCanceling, setIsCanceling] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -47,6 +51,51 @@ export default function BrokerBookedPlotsPage() {
     const handleViewDetails = (plot: any) => {
         setSelectedPlot(plot);
         setShowDetailsDialog(true);
+    };
+
+    const handleCancelClick = (plot: any) => {
+        setCancelingPlotId(plot.id);
+        setSelectedPlot(plot);
+        setShowCancelDialog(true);
+    };
+
+    const handleConfirmCancel = async () => {
+        if (!cancelingPlotId) return;
+        
+        try {
+            setIsCanceling(true);
+            const result = await cancelBookedPlot(cancelingPlotId);
+            
+            if (result.success) {
+                toast({
+                    title: 'Success',
+                    description: result.message,
+                    variant: 'default'
+                });
+                // Refresh the booked plots list
+                const plots = await getBrokerBookedPlots();
+                setBookedPlots(plots || []);
+                const projected = await getProjectedCommissionWallet();
+                setProjectedCommission(projected);
+            } else {
+                toast({
+                    title: 'Error',
+                    description: result.message,
+                    variant: 'destructive'
+                });
+            }
+        } catch (error) {
+            console.error('Error canceling booking:', error);
+            toast({
+                title: 'Error',
+                description: 'Failed to cancel booking',
+                variant: 'destructive'
+            });
+        } finally {
+            setIsCanceling(false);
+            setShowCancelDialog(false);
+            setCancelingPlotId(null);
+        }
     };
 
     const totalAmount = bookedPlots.reduce((sum, plot) => sum + (plot.total_plot_amount || 0), 0);
@@ -216,15 +265,27 @@ Your earning from this booking is being securely held here and will be unlocked 
                                             </TableCell>
                                             <TableCell className="text-center">{plot.tenure_months} months</TableCell>
                                             <TableCell className="text-center">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleViewDetails(plot)}
-                                                    className="gap-2"
-                                                >
-                                                    <Eye className="h-4 w-4" />
-                                                    Details
-                                                </Button>
+                                                <div className="flex gap-2 justify-center">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleViewDetails(plot)}
+                                                        className="gap-2"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                        Details
+                                                    </Button>
+                                                    {plot.paid_percentage < 75 && (
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            onClick={() => handleCancelClick(plot)}
+                                                            className="gap-2"
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -354,6 +415,48 @@ Your earning from this booking is being securely held here and will be unlocked 
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Cancel Booking Dialog */}
+            <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Booking?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to cancel this booking for Plot #{selectedPlot?.plot_number}?
+                            <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-md border border-yellow-200 dark:border-yellow-800">
+                                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                    <strong>⚠️ This action will:</strong>
+                                </p>
+                                <ul className="text-xs text-yellow-700 dark:text-yellow-300 mt-2 space-y-1 ml-4">
+                                    <li>• Reset the plot status to "Available"</li>
+                                    <li>• Clear all booking information</li>
+                                    <li>• Make it available for other buyers</li>
+                                    <li>• Cancel can only be done before 75% payment</li>
+                                </ul>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="flex justify-end gap-2 mt-6">
+                        <AlertDialogCancel disabled={isCanceling}>
+                            No, Keep It
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleConfirmCancel}
+                            disabled={isCanceling}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            {isCanceling ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Canceling...
+                                </>
+                            ) : (
+                                'Yes, Cancel Booking'
+                            )}
+                        </AlertDialogAction>
+                    </div>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
