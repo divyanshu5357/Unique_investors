@@ -129,10 +129,3 @@ export function getCommissionBreakdown(plotSizeInGaj: number): {
  * To modify rates, only edit the values at the top of this file.
  * All the above locations will automatically use the new rates.
  */
-
-export default {
-    GAJ_COMMISSION_RATES,
-    COMMISSION_SYSTEM_TYPE,
-    calculateCommission,
-    getCommissionBreakdown,
-};
