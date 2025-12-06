@@ -13,8 +13,7 @@ interface PaymentRecord {
     amount_received: number;
     payment_date: string;
     notes: string | null;
-    created_at: string;
-    updater: { full_name: string | null } | null;
+    buyer_name?: string | null;
 }
 
 interface PaymentHistoryDialogProps {
@@ -120,7 +119,6 @@ export function PaymentHistoryDialog({ isOpen, onClose, plotId, plotDetails }: P
                                 <TableRow>
                                     <TableHead>Date</TableHead>
                                     <TableHead className="text-right">Amount</TableHead>
-                                    <TableHead>Updated By</TableHead>
                                     <TableHead>Notes</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -140,14 +138,6 @@ export function PaymentHistoryDialog({ isOpen, onClose, plotId, plotDetails }: P
                                                 <IndianRupee className="h-4 w-4 text-green-600" />
                                                 <span className="font-semibold text-green-600">
                                                     {formatCurrency(payment.amount_received)}
-                                                </span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-2">
-                                                <User className="h-4 w-4 text-muted-foreground" />
-                                                <span className="text-sm">
-                                                    {payment.updater?.full_name || 'Admin'}
                                                 </span>
                                             </div>
                                         </TableCell>

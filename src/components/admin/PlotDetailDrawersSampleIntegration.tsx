@@ -23,6 +23,14 @@ import { format } from 'date-fns';
  * - Payment details drawer focuses on installment tracking
  */
 
+// Utility: Generate sample dates (moved outside component to avoid purity issues)
+const NOW = new Date();
+const SAMPLE_INSTALLMENT_DATES = {
+    past30Days: new Date(NOW.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    past15Days: new Date(NOW.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    future15Days: new Date(NOW.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+};
+
 interface SampleIntegrationProps {
     plots: Plot[];
     userRole: 'admin' | 'broker';
@@ -53,7 +61,7 @@ export function PlotDetailDrawersSampleIntegration({
     const mockInstallments = [
         {
             id: '1',
-            installmentDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+            installmentDate: SAMPLE_INSTALLMENT_DATES.past30Days,
             amount: 100000,
             paymentMethod: 'Bank Transfer',
             receiptNumber: 'REC-001-2024',
@@ -62,7 +70,7 @@ export function PlotDetailDrawersSampleIntegration({
         },
         {
             id: '2',
-            installmentDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+            installmentDate: SAMPLE_INSTALLMENT_DATES.past15Days,
             amount: 100000,
             paymentMethod: 'Cheque',
             receiptNumber: 'REC-002-2024',
@@ -71,7 +79,7 @@ export function PlotDetailDrawersSampleIntegration({
         },
         {
             id: '3',
-            installmentDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+            installmentDate: SAMPLE_INSTALLMENT_DATES.future15Days,
             amount: 100000,
             paymentMethod: undefined,
             receiptNumber: undefined,

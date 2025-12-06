@@ -42,3 +42,15 @@ pnpm-debug.log*
 # Firebase
 .firebase/
 bfg-report*/
+
+# Documentation & Markdown files (except README.md)
+*.md
+!README.md
+*.sql
+DEBUG_*.sql
+CHECK_*.sql
+*.txt
+
+# Unused files
+extended-commission-verify.js
+test-commission-booked.js

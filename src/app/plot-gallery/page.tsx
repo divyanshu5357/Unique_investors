@@ -21,6 +21,14 @@ import { Plot } from '@/lib/schema';
  * Integrates PaymentInstallmentDrawer for payment details (booked/sold plots)
  */
 
+// Utility: Generate sample dates (moved outside component to avoid purity issues)
+const NOW = new Date();
+const SAMPLE_INSTALLMENT_DATES = {
+    past30Days: new Date(NOW.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    past15Days: new Date(NOW.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    future15Days: new Date(NOW.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+};
+
 // Mock data - replace with actual API calls
 const mockPlots: Plot[] = [
     {
@@ -564,7 +572,7 @@ export default function PlotGalleryPage() {
                 installments={[
                     {
                         id: '1',
-                        installmentDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+                        installmentDate: SAMPLE_INSTALLMENT_DATES.past30Days,
                         amount: 100000,
                         paymentMethod: 'Bank Transfer',
                         receiptNumber: 'REC-001-2024',
@@ -573,7 +581,7 @@ export default function PlotGalleryPage() {
                     },
                     {
                         id: '2',
-                        installmentDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+                        installmentDate: SAMPLE_INSTALLMENT_DATES.past15Days,
                         amount: 100000,
                         paymentMethod: 'Cheque',
                         receiptNumber: 'REC-002-2024',
@@ -582,7 +590,7 @@ export default function PlotGalleryPage() {
                     },
                     {
                         id: '3',
-                        installmentDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+                        installmentDate: SAMPLE_INSTALLMENT_DATES.future15Days,
                         amount: 100000,
                         paymentMethod: undefined,
                         receiptNumber: undefined,
