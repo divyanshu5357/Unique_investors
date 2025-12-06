@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, PlusSquare, Home, LogOut, GanttChartSquare, Users, TrendingUp, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft, ClipboardList, History, Image as ImageIcon } from 'lucide-react';
+import { LayoutDashboard, PlusSquare, Home, LogOut, GanttChartSquare, Users, TrendingUp, Wallet, CreditCard, Shield, UserPlus, Menu, X, ChevronLeft, ClipboardList, History, Image as ImageIcon, Grid3X3 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
@@ -16,6 +16,7 @@ const menuItems = [
   { href: '/admin/associates', icon: Users, label: 'Associates (Brokers)' },
   { href: '/admin/referrals', icon: UserPlus, label: 'Referrals' },
   { href: '/admin/inventory', icon: GanttChartSquare, label: 'Inventory' },
+  { href: '/admin/plot-gallery', icon: Grid3X3, label: 'Plot Gallery' },
   { href: '/admin/booked-plots', icon: ClipboardList, label: 'Booked Plots' },
   { href: '/admin/commissions', icon: TrendingUp, label: 'Commissions' },
   { href: '/admin/transactions', icon: CreditCard, label: 'Transactions' },

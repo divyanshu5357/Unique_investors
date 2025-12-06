@@ -373,6 +373,39 @@ export async function updatePlot(id: string, data: Partial<PlotFormValues>) {
             updateData.paid_percentage = (processedData.bookingAmount / processedData.totalPlotAmount * 100);
         }
 
+        // When transitioning to sold: auto-populate salePrice and saleDate if not provided
+        if (processedData.status === 'sold' && (!processedData.salePrice || processedData.salePrice === 0 || !processedData.saleDate)) {
+            // Fetch total paid amount and buyer info from payment_history
+            const { data: payments } = await supabaseAdmin
+                .from('payment_history')
+                .select('amount_received, buyer_name, payment_date, created_at')
+                .eq('plot_id', id)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            
+            const totalPaid = (payments || []).reduce((sum: number, p: any) => sum + (p.amount_received || 0), 0);
+            
+            // If there are actual payments, use that as sale price
+            if (totalPaid > 0 && (!processedData.salePrice || processedData.salePrice === 0)) {
+                updateData.sale_price = totalPaid;
+                logger.dev(`🔄 Auto-setting sale_price to ₹${totalPaid} (from payment_history) for plot ${id}`);
+            }
+            
+            // Auto-populate sale_date if not provided - use first payment date or created_at
+            if (!processedData.saleDate && payments && payments.length > 0) {
+                const payment = payments[0];
+                const dateToUse = payment.payment_date || payment.created_at || new Date().toISOString();
+                updateData.sale_date = dateToUse;
+                logger.dev(`🔄 Auto-setting sale_date to ${dateToUse} (from payment_history) for plot ${id}`);
+            }
+            
+            // Auto-populate buyer_name from first payment if not already set
+            if (!processedData.buyerName && payments && payments.length > 0 && payments[0].buyer_name) {
+                updateData.buyer_name = payments[0].buyer_name;
+                logger.dev(`🔄 Auto-setting buyer_name to ${payments[0].buyer_name} (from payment_history) for plot ${id}`);
+            }
+        }
+
         // IMPORTANT: If plot is sold and brokerId is provided, use broker's ID as updated_by
         // This ensures the broker gets credit for the sale, not the admin who saved the form
         if (processedData.status === 'sold' && processedData.brokerId && processedData.brokerId.trim()) {
@@ -3536,8 +3569,40 @@ export async function getPlots() {
 
         if (!plots) return [];
 
+        // For sold plots, fetch payment history to get buyer name and sale date
+        const enrichedPlots = await Promise.all(plots.map(async (plot) => {
+            let buyerName = plot.buyer_name;
+            let saleDate = plot.sale_date;
+            
+            // For sold plots, if buyer_name or sale_date is missing, fetch from payment_history
+            if (plot.status === 'sold' && (!buyerName || !saleDate)) {
+                const { data: payments } = await supabaseAdmin
+                    .from('payment_history')
+                    .select('buyer_name, payment_date, created_at')
+                    .eq('plot_id', plot.id)
+                    .order('payment_date', { ascending: false, nullsFirst: false })
+                    .limit(1);
+                
+                if (payments && payments.length > 0) {
+                    const payment = payments[0];
+                    // Use the most recent payment's buyer name and date
+                    buyerName = buyerName || payment.buyer_name;
+                    // Try payment_date first, then fallback to created_at
+                    saleDate = saleDate || payment.payment_date || payment.created_at;
+                    
+                    logger.dev(`📅 Enriched plot ${plot.id}: buyer=${buyerName}, saleDate=${saleDate}`);
+                }
+            }
+            
+            return {
+                ...plot,
+                buyer_name: buyerName,
+                sale_date: saleDate
+            };
+        }));
+
         // Map database fields to expected application fields
-        return plots.map(plot => ({
+        return enrichedPlots.map(plot => ({
             id: plot.id,
             projectName: plot.project_name,
             type: plot.type || 'Residential', // Default if missing
@@ -3549,6 +3614,7 @@ export async function getPlots() {
             buyerName: plot.buyer_name,
             buyerPhone: plot.buyer_phone,
             buyerEmail: plot.buyer_email,
+            price: plot.price,
             salePrice: plot.sale_price,
             saleDate: plot.sale_date,
             commissionRate: plot.commission_rate,
@@ -3556,6 +3622,12 @@ export async function getPlots() {
             brokerId: plot.broker_id,
             sellerName: plot.seller_name,
             soldAmount: plot.sold_amount,
+            // Booked plot fields
+            totalPlotAmount: plot.total_plot_amount,
+            bookingAmount: plot.booking_amount,
+            remainingAmount: plot.remaining_amount,
+            tenureMonths: plot.tenure_months,
+            paidPercentage: plot.paid_percentage,
             createdAt: plot.created_at,
             updatedAt: plot.updated_at,
             updatedBy: plot.updated_by,
@@ -3620,24 +3692,57 @@ export async function getPaymentHistory(plotId: string) {
         await authorizeAdmin();
         const supabaseAdmin = getSupabaseAdminClient();
         
-        // Backfill: ensure an initial booking payment exists for legacy plots
-        // where booking_amount was saved on plots but an entry wasn't inserted into payment_history
-        await ensureInitialBookingPayment(plotId);
+        // First, get the plot to check if it's sold and has sold_amount
+        const { data: plot, error: plotError } = await supabaseAdmin
+            .from('plots')
+            .select('id, status, sold_amount, updated_at, buyer_name')
+            .eq('id', plotId)
+            .single();
         
+        if (plotError) {
+            throw new Error(`Failed to fetch plot: ${plotError.message}`);
+        }
+        
+        // Query payment_history table for actual payment records
+        // From migration 20241020000002 - has amount_received, payment_date columns
         const { data: payments, error } = await supabaseAdmin
             .from('payment_history')
             .select(`
-                *,
-                updater:profiles!payment_history_updated_by_fkey(full_name)
+                id,
+                amount_received,
+                payment_date,
+                notes,
+                buyer_name
             `)
             .eq('plot_id', plotId)
-            .order('payment_date', { ascending: false });
+            .order('payment_date', { ascending: true, nullsFirst: false });
 
         if (error) {
             throw new Error(`Failed to fetch payment history: ${error.message}`);
         }
 
-        return payments || [];
+        // Transform to match expected format for the History tab
+        const transformedPayments = (payments || []).map((p: any) => ({
+            id: p.id,
+            payment_date: p.payment_date,
+            amount_received: p.amount_received,
+            notes: p.notes,
+            buyer_name: p.buyer_name
+        }));
+        
+        // For SOLD plots with NO payment history, create a synthetic entry based on sold_amount
+        if (plot.status === 'sold' && transformedPayments.length === 0 && plot.sold_amount && plot.sold_amount > 0) {
+            const syntheticPayment = {
+                id: `synthetic-${plotId}`,
+                payment_date: plot.updated_at || new Date().toISOString(),
+                amount_received: plot.sold_amount,
+                notes: 'Sale amount (plot marked as sold)',
+                buyer_name: plot.buyer_name
+            };
+            transformedPayments.push(syntheticPayment);
+        }
+        
+        return transformedPayments;
     } catch (error) {
         logger.error('Error in getPaymentHistory:', error);
         throw new Error(`Failed to get payment history: ${error instanceof Error ? error.message : 'Unknown error'}`);
