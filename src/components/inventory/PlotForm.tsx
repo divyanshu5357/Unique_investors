@@ -253,7 +253,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                     name="buyerName"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Buyer Name</FormLabel>
+                                            <FormLabel>Buyer Name *</FormLabel>
                                             <FormControl>
                                                 <Input placeholder="e.g. John Doe" {...field} value={field.value ?? ''} />
                                             </FormControl>
@@ -358,7 +358,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                             name="salePrice"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Sale/Sold Amount</FormLabel>
+                                                    <FormLabel>Sale/Sold Amount *</FormLabel>
                                                     <FormControl>
                                                         <Input type="number" placeholder="e.g. 500000" {...field} value={field.value ?? ''} />
                                                     </FormControl>
@@ -377,7 +377,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                             name="brokerId"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Associate/Broker</FormLabel>
+                                                    <FormLabel>Associate/Broker *</FormLabel>
                                                     <Select 
                                                         onValueChange={(value) => {
                                                             field.onChange(value);

@@ -69,7 +69,7 @@ const PlotCard = ({ plot, onEdit }: { plot: Plot; onEdit: () => void; }) => (
                 }}
             >
                 {plot.plotNumber}
-                {plot.status !== 'sold' && (
+                {plot.status === 'available' && (
                     <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
                             <Pencil className="h-3 w-3" />
@@ -209,6 +209,10 @@ export default function PlotInventoryPage() {
     }, [filteredPlots]);
 
     const handleEdit = (plot: Plot) => {
+        if (plot.status === 'booked') {
+            toast({ title: 'Booked Plot', description: 'Booked plots cannot be edited directly. Cancel the booking from the Booked Plots tab to make it available, then edit.', variant: 'destructive' });
+            return;
+        }
         if (plot.status === 'sold') {
             toast({ title: 'Sold Plot', description: 'Sold plots cannot be edited.', variant: 'destructive' });
             return;

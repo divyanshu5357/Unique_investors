@@ -311,7 +311,39 @@ export const DashboardAnalytics = z.object({
 export type DashboardAnalytics = z.infer<typeof DashboardAnalytics>;
 
 // Ensures that if status is 'sold', then salePrice and commissionRate are required and positive.
+// For 'booked' plots, requires totalPlotAmount, tenureMonths, and buyerName.
+// For all non-available plots, requires buyerName.
 export const PlotFormValidationSchema = PlotSchema.omit({ id: true, createdAt: true, updatedAt: true, updatedBy: true }).superRefine((data, ctx) => {
+    // Buyer name is required for booked and sold plots
+    if (data.status !== 'available') {
+        if (!data.buyerName || data.buyerName.trim() === '') {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['buyerName'],
+                message: 'Buyer name is required for booked and sold plots.',
+            });
+        }
+    }
+
+    // Booked plot specific validations
+    if (data.status === 'booked') {
+        if (!data.totalPlotAmount || data.totalPlotAmount <= 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['totalPlotAmount'],
+                message: 'Total plot amount is required and must be positive for booked plots.',
+            });
+        }
+        if (!data.tenureMonths || data.tenureMonths <= 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['tenureMonths'],
+                message: 'Tenure (in months) is required and must be positive for booked plots.',
+            });
+        }
+    }
+
+    // Sold plot specific validations
     if (data.status === 'sold') {
         if (!data.salePrice || data.salePrice <= 0) {
             ctx.addIssue({
@@ -334,6 +366,5 @@ export const PlotFormValidationSchema = PlotSchema.omit({ id: true, createdAt: t
                 message: 'Broker is required when plot is sold.',
             });
         }
-        // Removed soldAmount validation as we now only use salePrice field
     }
 });

@@ -429,7 +429,20 @@ export default function AssociatesPage() {
                                                         size="sm"
                                                         variant="destructive"
                                                         onClick={() => handleDelete(broker)}
-                                                        title="Delete Associate"
+                                                        disabled={
+                                                            (broker.soldPlots?.length || 0) > 0 ||
+                                                            (broker.downlineMemberCount || 0) > 0 ||
+                                                            (broker.totalBalance || 0) > 0
+                                                        }
+                                                        title={
+                                                            (broker.soldPlots?.length || 0) > 0
+                                                                ? "Cannot delete: Broker has sold plots"
+                                                                : (broker.downlineMemberCount || 0) > 0
+                                                                ? "Cannot delete: Broker has downline members"
+                                                                : (broker.totalBalance || 0) > 0
+                                                                ? "Cannot delete: Broker has wallet balance"
+                                                                : "Delete Associate"
+                                                        }
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>

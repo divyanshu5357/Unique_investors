@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useTransition } from 'react';
 // Firebase imports removed - now using Supabase actions
-import { getPlots } from '@/lib/actions';
+import { getPlots, canDeletePlot } from '@/lib/actions';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,7 @@ const statusConfig = {
     },
 };
 
-const PlotCard = ({ plot, onEdit, onDelete }: { plot: Plot; onEdit: () => void; onDelete: () => void; }) => (
+const PlotCard = ({ plot, onEdit, onDelete, canDelete, deleteReason }: { plot: Plot; onEdit: () => void; onDelete: () => void; canDelete: boolean; deleteReason?: string }) => (
     <Dialog>
         <DialogTrigger asChild>
             <div
@@ -57,12 +57,19 @@ const PlotCard = ({ plot, onEdit, onDelete }: { plot: Plot; onEdit: () => void; 
                 }}
             >
                 {plot.plotNumber}
-                {plot.status !== 'sold' && (
+                {plot.status === 'available' && (
                     <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
                             <Pencil className="h-3 w-3" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6" 
+                            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                            disabled={!canDelete}
+                            title={deleteReason || 'Delete plot'}
+                        >
                             <Trash2 className="h-3 w-3" />
                         </Button>
                     </div>
@@ -113,6 +120,7 @@ export default function PlotInventoryPage() {
     const [isPending, startTransition] = useTransition();
     const [allPlots, setAllPlots] = useState<Plot[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletableStatus, setDeletableStatus] = useState<Map<string, { canDelete: boolean; reason?: string }>>(new Map());
 
     const [selectedProject, setSelectedProject] = useState('');
     const [selectedType, setSelectedType] = useState('');
@@ -162,6 +170,29 @@ export default function PlotInventoryPage() {
 
         fetchPlots();
     }, []);
+
+    // Check deletability status for all plots
+    useEffect(() => {
+        if (allPlots.length === 0) return;
+
+        const checkDeletability = async () => {
+            const statusMap = new Map<string, { canDelete: boolean; reason?: string }>();
+            
+            for (const plot of allPlots) {
+                try {
+                    const result = await canDeletePlot(plot.id);
+                    statusMap.set(plot.id, result);
+                } catch (error) {
+                    console.error(`Error checking deletability for plot ${plot.id}:`, error);
+                    statusMap.set(plot.id, { canDelete: false, reason: 'Could not verify deletion eligibility' });
+                }
+            }
+            
+            setDeletableStatus(statusMap);
+        };
+
+        checkDeletability();
+    }, [allPlots]);
     
     const projectNames = useMemo(() => [...new Set(allPlots.map(p => p.projectName))].sort(), [allPlots]);
     
@@ -210,6 +241,10 @@ export default function PlotInventoryPage() {
     };
 
     const handleEdit = (plot: Plot) => {
+        if (plot.status === 'booked') {
+            toast({ title: 'Booked Plot', description: 'Booked plots cannot be edited directly. Cancel the booking first to make it available, then edit.', variant: 'destructive' });
+            return;
+        }
         if (plot.status === 'sold') {
             toast({ title: 'Sold Plot', description: 'Sold plots cannot be edited.', variant: 'destructive' });
             return;
@@ -401,7 +436,29 @@ export default function PlotInventoryPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-3">
-                                {filteredPlots.map(plot => <PlotCard key={plot.id} plot={plot} onEdit={() => handleEdit(plot)} onDelete={() => handleDelete(plot.id)} />)}
+                                {filteredPlots.map(plot => {
+                                    const deleteStatus = deletableStatus.get(plot.id) || { canDelete: true };
+                                    return (
+                                        <PlotCard 
+                                            key={plot.id} 
+                                            plot={plot} 
+                                            onEdit={() => handleEdit(plot)} 
+                                            onDelete={() => {
+                                                if (!deleteStatus.canDelete) {
+                                                    toast({ 
+                                                        title: "Cannot Delete Plot", 
+                                                        description: deleteStatus.reason || 'This plot cannot be deleted.',
+                                                        variant: 'destructive'
+                                                    });
+                                                    return;
+                                                }
+                                                handleDelete(plot.id);
+                                            }}
+                                            canDelete={deleteStatus.canDelete}
+                                            deleteReason={deleteStatus.reason}
+                                        />
+                                    );
+                                })}
                             </div>
                         </CardContent>
                     </Card>

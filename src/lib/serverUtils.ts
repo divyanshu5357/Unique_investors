@@ -47,6 +47,22 @@ export const getSupabaseServerClient = async () => {
             async get(name: string) {
                 return (await cookieStore).get(name)?.value;
             },
+            async set(name: string, value: string, options: any) {
+                try {
+                    (await cookieStore).set(name, value, options);
+                } catch (error) {
+                    // Handle cookie setting errors gracefully
+                    console.error(`Failed to set cookie ${name}:`, error);
+                }
+            },
+            async remove(name: string, options: any) {
+                try {
+                    (await cookieStore).delete(name);
+                } catch (error) {
+                    // Handle cookie deletion errors gracefully
+                    console.error(`Failed to delete cookie ${name}:`, error);
+                }
+            },
         },
     });
 };

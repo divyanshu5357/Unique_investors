@@ -17,6 +17,7 @@ export interface Broker {
     full_name: string | null;
     email: string | undefined;
     soldPlots?: SoldPlot[];
+    downlineMemberCount?: number;
     directSaleBalance?: number;
     downlineSaleBalance?: number;
     totalBalance?: number;

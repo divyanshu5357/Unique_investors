@@ -768,102 +768,139 @@ export async function analyzeDuplicatePlots() {
     }
 }
 
+export async function canDeletePlot(plotId: string): Promise<{ canDelete: boolean; reason?: string }> {
+    await authorizeAdmin();
+    const supabaseAdmin = getSupabaseAdminClient();
+
+    try {
+        // Fetch the plot
+        const { data: plot, error: plotError } = await supabaseAdmin
+            .from('plots')
+            .select('*')
+            .eq('id', plotId)
+            .single();
+
+        if (plotError || !plot) {
+            return { canDelete: false, reason: 'Plot not found' };
+        }
+
+        // Cannot delete if plot is booked or sold
+        if (plot.status === 'booked' || plot.status === 'sold') {
+            return { canDelete: false, reason: `Cannot delete ${plot.status} plots. Only available plots can be deleted.` };
+        }
+
+        // Check if plot has any payment history
+        const { data: payments, error: paymentError } = await supabaseAdmin
+            .from('payment_history')
+            .select('id', { count: 'exact', head: true })
+            .eq('plot_id', plotId);
+
+        if (!paymentError && payments && payments.length > 0) {
+            return { canDelete: false, reason: 'Cannot delete plots with payment history.' };
+        }
+
+        // Check if plot has any plot history (audit trail)
+        const { data: plotHistory, error: historyError } = await supabaseAdmin
+            .from('plot_history')
+            .select('id', { count: 'exact', head: true })
+            .eq('plot_id', plotId);
+
+        if (!historyError && plotHistory && plotHistory.length > 0) {
+            return { canDelete: false, reason: 'Cannot delete plots with history records.' };
+        }
+
+        // Check if plot has any transactions
+        const { data: transactions, error: txError } = await supabaseAdmin
+            .from('transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('plot_id', plotId);
+
+        if (!txError && transactions && transactions.length > 0) {
+            return { canDelete: false, reason: 'Cannot delete plots with transaction history.' };
+        }
+
+        // Check if plot has any commissions
+        const { data: commissions, error: commError } = await supabaseAdmin
+            .from('commissions')
+            .select('id', { count: 'exact', head: true })
+            .eq('plot_id', plotId);
+
+        if (!commError && commissions && commissions.length > 0) {
+            return { canDelete: false, reason: 'Cannot delete plots with commission records.' };
+        }
+
+        // All checks passed - plot can be deleted
+        return { canDelete: true };
+    } catch (error) {
+        logger.error('Error checking if plot can be deleted:', error);
+        return { canDelete: false, reason: 'Error checking plot eligibility for deletion' };
+    }
+}
+
 export async function deletePlot(id: string) {
     await authorizeAdmin();
     const supabaseAdmin = getSupabaseAdminClient();
     
     try {
-        // First, get the plot details to check if it was sold
-        const { data: plot, error: plotError } = await supabaseAdmin
-            .from('plots')
-            .select('*')
-            .eq('id', id)
-            .single();
-
-        if (plotError) {
-            throw new Error(`Failed to fetch plot: ${plotError.message}`);
+        // Check if plot can be deleted
+        const { canDelete, reason } = await canDeletePlot(id);
+        
+        if (!canDelete) {
+            throw new Error(reason || 'This plot cannot be deleted.');
         }
 
-        // If plot was sold, we need to reverse commissions
-        if (plot && plot.status === 'sold' && plot.broker_id) {
-            logger.dev('🗑️ Deleting sold plot, reversing commissions...');
-            
-            // Get all transactions related to this plot
-            const { data: plotTransactions, error: txError } = await supabaseAdmin
-                .from('transactions')
-                .select('*')
-                .eq('plot_id', id);
+        // Delete all related records FIRST to prevent cascade issues
+        // This clears out all the data before the plot is deleted
+        
+        // Delete plot history records
+        await supabaseAdmin
+            .from('plot_history')
+            .delete()
+            .eq('plot_id', id);
 
-            if (!txError && plotTransactions && plotTransactions.length > 0) {
-                logger.dev(`Found ${plotTransactions.length} transactions to reverse`);
-                
-                // Reverse wallet balances for each transaction
-                for (const tx of plotTransactions) {
-                    if (tx.type === 'credit') {
-                        // Deduct the commission amount from the wallet
-                        const { data: wallet } = await supabaseAdmin
-                            .from('wallets')
-                            .select('*')
-                            .eq('owner_id', tx.wallet_id)
-                            .single();
+        // Delete payment history records
+        await supabaseAdmin
+            .from('payment_history')
+            .delete()
+            .eq('plot_id', id);
 
-                        if (wallet) {
-                            const updates: any = {
-                                updated_at: new Date().toISOString()
-                            };
+        // Delete transaction records
+        await supabaseAdmin
+            .from('transactions')
+            .delete()
+            .eq('plot_id', id);
 
-                            if (tx.wallet_type === 'direct') {
-                                updates.direct_sale_balance = Math.max(0, (wallet.direct_sale_balance || 0) - tx.amount);
-                                updates.total_balance = Math.max(0, (wallet.total_balance || 0) - tx.amount);
-                            } else if (tx.wallet_type === 'downline') {
-                                updates.downline_sale_balance = Math.max(0, (wallet.downline_sale_balance || 0) - tx.amount);
-                                updates.total_balance = Math.max(0, (wallet.total_balance || 0) - tx.amount);
-                            }
+        // Delete commission records
+        await supabaseAdmin
+            .from('commissions')
+            .delete()
+            .eq('plot_id', id);
 
-                            await supabaseAdmin
-                                .from('wallets')
-                                .update(updates)
-                                .eq('owner_id', tx.wallet_id);
-
-                            logger.dev(`✅ Reversed ₹${tx.amount} from wallet (${tx.wallet_type})`);
-                        }
-                    }
-                }
-
-                // Delete all transactions related to this plot
-                const { error: deleteTxError } = await supabaseAdmin
-                    .from('transactions')
-                    .delete()
-                    .eq('plot_id', id);
-
-                if (deleteTxError) {
-                    logger.error('Error deleting transactions:', deleteTxError);
-                } else {
-                    logger.dev('✅ Deleted all related transactions');
-                }
-            }
-
-            // Delete commissions related to this plot
-            const { error: deleteCommError } = await supabaseAdmin
-                .from('commissions')
-                .delete()
-                .eq('plot_id', id);
-
-            if (deleteCommError) {
-                logger.error('Error deleting commissions:', deleteCommError);
-            } else {
-                logger.dev('✅ Deleted all related commissions');
-            }
-        }
-
-        // Finally, delete the plot
-        const { error } = await supabaseAdmin
+        // Now delete the plot itself
+        // The trigger will try to create a history record, but since we've already
+        // deleted all history records, it may fail. This is expected behavior.
+        const { error: plotError } = await supabaseAdmin
             .from('plots')
             .delete()
             .eq('id', id);
 
-        if (error) {
-            throw new Error(`Failed to delete plot: ${error.message}`);
+        // If the error is about plot_history foreign key during deletion,
+        // it's likely because the DELETE trigger tried to INSERT a history record
+        // but there's a race condition. Check if the plot was actually deleted.
+        if (plotError) {
+            // Verify if the plot still exists
+            const { data: stillExists } = await supabaseAdmin
+                .from('plots')
+                .select('id')
+                .eq('id', id)
+                .single();
+            
+            if (stillExists) {
+                // Plot still exists - this is a real error
+                throw new Error(`Failed to delete plot: ${plotError.message}`);
+            }
+            // Plot is actually deleted despite the error - this is OK
+            logger.dev('⚠️ Plot deleted despite trigger conflict (expected behavior)');
         }
 
         logger.dev('✅ Plot deleted successfully');
@@ -874,7 +911,7 @@ export async function deletePlot(id: string) {
         revalidatePath('/admin/associates');
     } catch (error) {
         logger.error("Error deleting plot: ", error);
-        throw new Error("Could not delete the plot.");
+        throw error;
     }
 }
 
@@ -1118,8 +1155,20 @@ export async function getBrokers(): Promise<Broker[]> {
             createdAt: plot.created_at,
             updatedAt: plot.updated_at,
         }));
-        
-        return { ...broker, soldPlots: soldPlotsFormatted };
+
+        // Get downline member count (brokers sponsored by this broker)
+        const { data: downlineMembers, error: downlineError } = await supabaseAdmin
+            .from('profiles')
+            .select('id', { count: 'exact', head: false })
+            .eq('sponsorid', broker.id);
+
+        if (downlineError) {
+            logger.dev(`Error fetching downline for broker ${broker.id}:`, downlineError.message);
+        }
+
+        const downlineMemberCount = downlineMembers?.length || 0;
+
+        return { ...broker, soldPlots: soldPlotsFormatted, downlineMemberCount };
     }));
 
     return brokersWithPlots;
@@ -4909,19 +4958,16 @@ export async function getBrokerPlotHistory() {
                 id,
                 project_name,
                 plot_number,
-                plot_size_gaj,
+                area,
                 status,
                 buyer_name,
                 broker_name,
-                booking_date,
                 sale_date,
                 total_plot_amount,
+                booking_amount,
                 paid_percentage,
-                cancel_reason,
-                cancelled_date,
                 created_at,
-                updated_at,
-                payment_history
+                updated_at
             `)
             .eq('broker_id', user.id)
             .order('created_at', { ascending: false });
@@ -4930,25 +4976,70 @@ export async function getBrokerPlotHistory() {
             throw new Error(`Failed to fetch plot history: ${error.message}`);
         }
 
-        return (plots || []).map(plot => ({
-            id: plot.id,
-            plot_id: plot.id,
-            project_name: plot.project_name,
-            plot_number: plot.plot_number,
-            plot_size_gaj: plot.plot_size_gaj || 0,
-            status: plot.status as 'available' | 'booked' | 'sold' | 'cancelled',
-            buyer_name: plot.buyer_name,
-            broker_name: plot.broker_name,
-            booking_date: plot.booking_date,
-            sale_date: plot.sale_date,
-            total_amount: plot.total_plot_amount,
-            paid_percentage: plot.paid_percentage,
-            cancel_reason: plot.cancel_reason,
-            cancelled_date: plot.cancelled_date,
-            payment_history: plot.payment_history || [],
-            created_at: plot.created_at,
-            updated_at: plot.updated_at,
-        }));
+        // For each plot, fetch payment history and enrich data
+        const plotsWithPayments = await Promise.all(
+            (plots || []).map(async (plot) => {
+                const { data: payments } = await supabaseAdmin
+                    .from('payment_history')
+                    .select('amount_received, payment_date, buyer_name')
+                    .eq('plot_id', plot.id)
+                    .order('payment_date', { ascending: true });
+
+                // For sold plots without buyer_name, try to get from payment_history
+                let enrichedBuyerName = plot.buyer_name;
+                let enrichedTotalAmount = plot.total_plot_amount;
+                let enrichedPaidPercentage = plot.paid_percentage;
+                
+                if ((plot.status === 'sold' || plot.status === 'booked') && payments && payments.length > 0) {
+                    // Enrich from payment history
+                    if (!enrichedBuyerName && payments[0]?.buyer_name) {
+                        enrichedBuyerName = payments[0].buyer_name;
+                    }
+                    
+                    // Calculate total paid from payments
+                    const totalPaid = payments.reduce((sum, p) => sum + (p.amount_received || 0), 0);
+                    
+                    // If no total_plot_amount, use paid amount (for sold plots it might be the full sale amount)
+                    if (!enrichedTotalAmount && totalPaid > 0) {
+                        enrichedTotalAmount = totalPaid;
+                    }
+                    
+                    // Recalculate paid percentage
+                    if (enrichedTotalAmount && totalPaid > 0) {
+                        enrichedPaidPercentage = (totalPaid / enrichedTotalAmount) * 100;
+                    } else if (plot.status === 'sold' && !enrichedPaidPercentage) {
+                        // Sold plots are considered 100% paid if no percentage is set
+                        enrichedPaidPercentage = 100;
+                    }
+                }
+
+                return {
+                    id: plot.id,
+                    plot_id: plot.id,
+                    project_name: plot.project_name,
+                    plot_number: plot.plot_number,
+                    plot_size_gaj: plot.area || 0,
+                    status: plot.status as 'available' | 'booked' | 'sold' | 'cancelled',
+                    buyer_name: enrichedBuyerName,
+                    broker_name: plot.broker_name,
+                    booking_date: plot.created_at, // Use created_at as booking date if not available
+                    sale_date: plot.sale_date,
+                    total_amount: enrichedTotalAmount,
+                    booking_amount: plot.booking_amount,
+                    paid_percentage: enrichedPaidPercentage || 0,
+                    cancel_reason: null,
+                    cancelled_date: null,
+                    payment_history: (payments || []).map(p => ({
+                        amount: p.amount_received,
+                        date: p.payment_date
+                    })),
+                    created_at: plot.created_at,
+                    updated_at: plot.updated_at,
+                };
+            })
+        );
+
+        return plotsWithPayments;
     } catch (error) {
         logger.error('Error fetching broker plot history:', error);
         throw new Error('Failed to fetch plot history');
