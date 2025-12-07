@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RoleBasedPlotDetailDrawer } from '@/components/admin/RoleBasedPlotDetailDrawer';
 import { PaymentInstallmentDrawer } from '@/components/admin/PaymentInstallmentDrawer';
+import { ReceiptPrintWrapper } from '@/components/receipt';
+import type { PrintableReceiptProps } from '@/components/receipt';
 import { Eye, DollarSign, Grid3X3, List, Search, Filter, BarChart3 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Plot } from '@/lib/schema';
@@ -123,10 +125,12 @@ const mockPlots: Plot[] = [
 export default function PlotGalleryPage() {
     // State management
     const [plots, setPlots] = useState<Plot[]>(mockPlots);
-    const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
+    const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
     const [selectedPlot, setSelectedPlot] = useState<Plot | null>(null);
     const [isPlotDrawerOpen, setIsPlotDrawerOpen] = useState(false);
     const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
+    const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+    const [receiptProps, setReceiptProps] = useState<PrintableReceiptProps | null>(null);
     const [userRole, setUserRole] = useState<'admin' | 'broker'>('admin');
     const [loading, setLoading] = useState(false);
 
@@ -183,6 +187,76 @@ export default function PlotGalleryPage() {
     const handleViewPayments = (plot: Plot) => {
         setSelectedPlot(plot);
         setIsPaymentDrawerOpen(true);
+    };
+
+    // Handle print receipt
+    const handlePrintReceipt = (plot: Plot) => {
+        if (plot.status === 'booked') {
+            const receipt: PrintableReceiptProps = {
+                plotType: 'booked',
+                paymentDetails: {
+                    id: plot.id || '',
+                    receiptNumber: `${1000 + parseInt(plot.id || '1', 10)}`,
+                    date: new Date().toLocaleDateString('en-IN'),
+                    paymentMode: 'bank_transfer',
+                    transactionId: `TXN-${Date.now()}`,
+                },
+                buyerDetails: {
+                    name: plot.buyerName || 'N/A',
+                    mobile: '+91 XXXX XXXX',
+                    address: 'Property Address',
+                },
+                projectDetails: {
+                    projectName: plot.projectName,
+                    plotNumber: plot.plotNumber.toString(),
+                    block: plot.block,
+                    area: plot.area || 0,
+                    facing: plot.facing || 'N/A',
+                    dimension: plot.dimension,
+                },
+                financialDetails: {
+                    totalAmount: plot.totalPlotAmount || 0,
+                    bookingAmount: plot.bookingAmount || 0,
+                    totalPaidTillDate: (plot.totalPlotAmount || 0) * (plot.paidPercentage || 0) / 100,
+                    outstandingBalance: (plot.totalPlotAmount || 0) - ((plot.totalPlotAmount || 0) * (plot.paidPercentage || 0) / 100),
+                },
+                salesExecutive: plot.brokerName || 'Sales Executive',
+            };
+            setReceiptProps(receipt);
+        } else if (plot.status === 'sold') {
+            const receipt: PrintableReceiptProps = {
+                plotType: 'sold',
+                paymentDetails: {
+                    id: plot.id || '',
+                    receiptNumber: `${1000 + parseInt(plot.id || '1', 10)}`,
+                    date: new Date().toLocaleDateString('en-IN'),
+                    paymentMode: 'bank_transfer',
+                    transactionId: `TXN-${Date.now()}`,
+                },
+                buyerDetails: {
+                    name: plot.buyerName || 'N/A',
+                    mobile: '+91 XXXX XXXX',
+                    address: 'Property Address',
+                },
+                projectDetails: {
+                    projectName: plot.projectName,
+                    plotNumber: plot.plotNumber.toString(),
+                    block: plot.block,
+                    area: plot.area || 0,
+                    facing: plot.facing || 'N/A',
+                    dimension: plot.dimension,
+                },
+                financialDetails: {
+                    totalAmount: plot.salePrice || 0,
+                    bookingAmount: plot.salePrice || 0,
+                    totalPaidTillDate: plot.salePrice || 0,
+                    paymentCompleted: true,
+                },
+                salesExecutive: plot.brokerName || 'Sales Executive',
+            };
+            setReceiptProps(receipt);
+        }
+        setIsReceiptModalOpen(true);
     };
 
     // Status badge styling
@@ -461,79 +535,98 @@ export default function PlotGalleryPage() {
 
             {/* Grid View */}
             {viewMode === 'grid' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredPlots.length === 0 ? (
-                        <div className="col-span-full text-center py-8">
-                            <p className="text-muted-foreground">No plots found matching your filters</p>
+                        <div className="col-span-full text-center py-12">
+                            <p className="text-muted-foreground text-lg">No plots found matching your filters</p>
                         </div>
                     ) : (
                         filteredPlots.map(plot => (
-                            <Card key={plot.id} className="hover:shadow-lg transition-shadow cursor-pointer">
-                                <CardHeader>
-                                    <div className="flex items-start justify-between">
-                                        <div>
-                                            <CardTitle className="text-lg">Plot #{plot.plotNumber}</CardTitle>
-                                            <CardDescription>{plot.projectName}</CardDescription>
+                            <Card key={plot.id} className="hover:shadow-xl transition-all duration-300 cursor-pointer border-0 overflow-hidden">
+                                {/* Header with gradient background */}
+                                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
+                                    <div className="flex items-start justify-between mb-2">
+                                        <div className="flex-1">
+                                            <CardTitle className="text-xl font-bold text-gray-900">Plot #{plot.plotNumber}</CardTitle>
+                                            <CardDescription className="text-sm font-medium text-gray-600">{plot.projectName}</CardDescription>
                                         </div>
-                                        <Badge className={getStatusColor(plot.status)}>
-                                            {plot.status.charAt(0).toUpperCase() + plot.status.slice(1)}
+                                        <Badge className={`${getStatusColor(plot.status)} text-xs font-semibold px-3 py-1`}>
+                                            {plot.status === 'available' && '🟢 Available'}
+                                            {plot.status === 'booked' && '🟡 Booked'}
+                                            {plot.status === 'sold' && '🔴 Sold'}
                                         </Badge>
                                     </div>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-2 text-sm">
-                                        <div>
-                                            <p className="text-xs text-muted-foreground">Block</p>
-                                            <p className="font-medium">{plot.block}</p>
+                                </div>
+
+                                <CardContent className="p-5 space-y-4">
+                                    {/* Plot Details Grid */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-gray-50 rounded-lg p-3">
+                                            <p className="text-xs font-semibold text-gray-500 uppercase">Block</p>
+                                            <p className="text-lg font-bold text-gray-900 mt-1">{plot.block}</p>
                                         </div>
-                                        <div>
-                                            <p className="text-xs text-muted-foreground">Area</p>
-                                            <p className="font-medium">{plot.area} Gaj</p>
+                                        <div className="bg-gray-50 rounded-lg p-3">
+                                            <p className="text-xs font-semibold text-gray-500 uppercase">Area</p>
+                                            <p className="text-lg font-bold text-gray-900 mt-1">{plot.area} Gaj</p>
                                         </div>
-                                        <div>
-                                            <p className="text-xs text-muted-foreground">Type</p>
-                                            <p className="font-medium">{plot.type}</p>
+                                        <div className="bg-gray-50 rounded-lg p-3">
+                                            <p className="text-xs font-semibold text-gray-500 uppercase">Type</p>
+                                            <p className="text-lg font-bold text-gray-900 mt-1">{plot.type}</p>
                                         </div>
-                                        <div>
-                                            <p className="text-xs text-muted-foreground">Facing</p>
-                                            <p className="font-medium">{plot.facing || 'N/A'}</p>
+                                        <div className="bg-gray-50 rounded-lg p-3">
+                                            <p className="text-xs font-semibold text-gray-500 uppercase">Dimension</p>
+                                            <p className="text-lg font-bold text-gray-900 mt-1">{plot.dimension || 'N/A'}</p>
                                         </div>
                                     </div>
 
+                                    {/* Price Section */}
+                                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
+                                        <p className="text-xs font-semibold text-green-700 uppercase">Price</p>
+                                        <p className="text-2xl font-bold text-green-900 mt-1">₹{(plot.price || 0).toLocaleString('en-IN')}</p>
+                                    </div>
+
+                                    {/* Payment Progress - Only for Booked */}
                                     {plot.status === 'booked' && (
-                                        <div className="bg-yellow-50 p-3 rounded">
-                                            <p className="text-xs text-muted-foreground mb-1">Payment Progress</p>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex-1 h-2 bg-gray-200 rounded-full">
-                                                    <div
-                                                        className="h-2 bg-yellow-500 rounded-full"
-                                                        style={{ width: `${plot.paidPercentage || 0}%` }}
-                                                    ></div>
-                                                </div>
-                                                <span className="text-xs font-medium">
-                                                    {plot.paidPercentage || 0}%
-                                                </span>
+                                        <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="text-xs font-semibold text-yellow-700 uppercase">Payment Progress</p>
+                                                <span className="text-sm font-bold text-yellow-900">{plot.paidPercentage || 0}%</span>
+                                            </div>
+                                            <div className="w-full h-2.5 bg-yellow-200 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full transition-all duration-500"
+                                                    style={{ width: `${plot.paidPercentage || 0}%` }}
+                                                ></div>
                                             </div>
                                         </div>
                                     )}
 
+                                    {/* Buyer Info - Only if booked/sold */}
+                                    {(plot.status === 'booked' || plot.status === 'sold') && plot.buyerName && (
+                                        <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                            <p className="text-xs font-semibold text-blue-700 uppercase">Buyer/Owner</p>
+                                            <p className="text-sm font-bold text-blue-900 mt-1">{plot.buyerName}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Action Buttons */}
                                     <div className="flex gap-2 pt-2">
                                         <Button
-                                            className="flex-1"
+                                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                                             size="sm"
-                                            variant="outline"
                                             onClick={() => handleViewPlot(plot)}
                                         >
                                             <Eye className="h-4 w-4 mr-2" />
-                                            Details
+                                            View Details
                                         </Button>
                                         {(plot.status === 'booked' || plot.status === 'sold') && (
                                             <Button
                                                 size="sm"
-                                                variant="outline"
-                                                onClick={() => handleViewPayments(plot)}
+                                                className="bg-green-600 hover:bg-green-700 text-white"
+                                                onClick={() => handlePrintReceipt(plot)}
+                                                title="Print Receipt"
                                             >
-                                                <DollarSign className="h-4 w-4" />
+                                                🖨️ Print
                                             </Button>
                                         )}
                                     </div>
@@ -558,7 +651,6 @@ export default function PlotGalleryPage() {
                 onAddPayment={(plot) => console.log('Add payment for:', plot)}
                 onCancel={(plotId) => console.log('Cancel booking:', plotId)}
                 onConvertToSold={(plot) => console.log('Convert to sold:', plot)}
-                onPrint={(plot) => window.print()}
             />
 
             {/* Payment Installment Drawer */}
@@ -600,8 +692,36 @@ export default function PlotGalleryPage() {
                 ]}
                 userRole={userRole}
                 onDownloadReceipt={(installmentId) => console.log('Download receipt:', installmentId)}
-                onPrint={(plot) => window.print()}
             />
+
+            {/* Receipt Print Modal */}
+            {isReceiptModalOpen && receiptProps && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="bg-white rounded-lg max-w-4xl w-full my-8 max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
+                            <h2 className="text-xl font-bold">Receipt - {receiptProps.projectDetails.plotNumber}</h2>
+                            <button
+                                onClick={() => {
+                                    setIsReceiptModalOpen(false);
+                                    setReceiptProps(null);
+                                }}
+                                className="text-gray-500 hover:text-gray-700 font-bold text-xl"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="p-8">
+                            <ReceiptPrintWrapper
+                                {...receiptProps}
+                                onClose={() => {
+                                    setIsReceiptModalOpen(false);
+                                    setReceiptProps(null);
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

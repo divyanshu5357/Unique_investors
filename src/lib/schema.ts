@@ -48,6 +48,8 @@ export const PaymentHistorySchema = z.object({
     brokerId: z.string().optional().nullable(),
     amountReceived: z.number(),
     paymentDate: z.string(), // ISO date string
+    paymentMethod: z.string().optional().nullable(),
+    transactionId: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
     updatedBy: z.string().optional().nullable(),
     createdAt: z.string(),
@@ -61,6 +63,8 @@ export const addPaymentSchema = z.object({
     plotId: z.string().min(1, 'Plot ID is required'),
     amountReceived: z.coerce.number().positive('Amount must be positive'),
     paymentDate: z.string().min(1, 'Payment date is required'),
+    paymentMethod: z.string().min(1, 'Payment method is required'),
+    transactionId: z.string().min(1, 'Transaction ID is required'),
     notes: z.string().optional(),
 });
 

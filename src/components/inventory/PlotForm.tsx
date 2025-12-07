@@ -40,6 +40,10 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
             area: '' as any,
             status: 'available',
             buyerName: '',
+            buyerPhone: '',
+            buyerEmail: '',
+            bookingDate: '',
+            saleDate: '',
             salePrice: '' as any,
             commissionRate: '' as any,
             brokerName: '',
@@ -73,11 +77,23 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
         }
     }, [isOpen]);
 
+    // Get current date in YYYY-MM-DD format
+    const getCurrentDate = () => {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    };
+
     useEffect(() => {
         if (isOpen) {
+            const currentDate = getCurrentDate();
             if (initialData) {
                 form.reset({
                     ...initialData,
+                    buyerPhone: initialData.buyerPhone || '',
+                    buyerEmail: initialData.buyerEmail || '',
+                    // Use existing dates or set to current date
+                    bookingDate: initialData.bookingDate || (initialData?.status === 'booked' ? currentDate : ''),
+                    saleDate: initialData.saleDate || (initialData?.status === 'sold' ? currentDate : ''),
                     salePrice: initialData.salePrice || ('' as any),
                     commissionRate: initialData.commissionRate || ('' as any),
                     soldAmount: initialData.soldAmount || ('' as any),
@@ -101,6 +117,11 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                     area: '' as any,
                     status: 'available',
                     buyerName: '',
+                    buyerPhone: '',
+                    buyerEmail: '',
+                    // Empty for new plots - will auto-fill when status is changed
+                    bookingDate: '',
+                    saleDate: '',
                     salePrice: '' as any,
                     commissionRate: '' as any,
                     brokerName: '',
@@ -117,6 +138,17 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
             }
         }
     }, [initialData, isOpen]); // Removed 'form' from dependencies to prevent infinite loop
+
+    // Auto-set dates when status changes to booked or sold
+    useEffect(() => {
+        const currentDate = getCurrentDate();
+        
+        if (status === 'booked' && !form.getValues('bookingDate')) {
+            form.setValue('bookingDate', currentDate);
+        } else if (status === 'sold' && !form.getValues('saleDate')) {
+            form.setValue('saleDate', currentDate);
+        }
+    }, [status]);
 
     const handleFormSubmit = form.handleSubmit(
         (data) => {
@@ -264,6 +296,38 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                             )}
                         </div>
 
+                        {/* Buyer Contact Details */}
+                        {status !== 'available' && (
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField
+                                    control={form.control}
+                                    name="buyerPhone"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Phone Number *</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="e.g. +91 9876543210" {...field} value={field.value ?? ''} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="buyerEmail"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Email (Optional)</FormLabel>
+                                            <FormControl>
+                                                <Input type="email" placeholder="e.g. john@example.com" {...field} value={field.value ?? ''} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                        )}
+
                         {/* Booked Plot Fields - Show only when status is 'booked' */}
                         {status === 'booked' && (
                             <div className="border-t pt-4">
@@ -345,6 +409,28 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                         )}
                                     />
                                 </div>
+                                <div className="grid grid-cols-2 gap-4 mt-4">
+                                    <FormField
+                                        control={form.control}
+                                        name="bookingDate"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Booking Date *</FormLabel>
+                                                <FormControl>
+                                                    <Input 
+                                                        type="date" 
+                                                        className="bg-muted cursor-not-allowed"
+                                                        disabled
+                                                        {...field} 
+                                                        value={field.value ?? ''} 
+                                                    />
+                                                </FormControl>
+                                                <p className="text-xs text-muted-foreground mt-1">Auto-set to today's date</p>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
                             </div>
                         )}
 
@@ -352,7 +438,7 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                             <>
                                 <div className="border-t pt-4">
                                     <h4 className="text-sm font-medium mb-3 text-muted-foreground">Sale Information</h4>
-                                    <div className="grid grid-cols-1 gap-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <FormField
                                             control={form.control}
                                             name="salePrice"
@@ -362,6 +448,26 @@ export function PlotForm({ isOpen, onClose, onSubmit, initialData, isSubmitting 
                                                     <FormControl>
                                                         <Input type="number" placeholder="e.g. 500000" {...field} value={field.value ?? ''} />
                                                     </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <FormField
+                                            control={form.control}
+                                            name="saleDate"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Sale Date *</FormLabel>
+                                                    <FormControl>
+                                                        <Input 
+                                                            type="date" 
+                                                            className="bg-muted cursor-not-allowed"
+                                                            disabled
+                                                            {...field} 
+                                                            value={field.value ?? ''} 
+                                                        />
+                                                    </FormControl>
+                                                    <p className="text-xs text-muted-foreground mt-1">Auto-set to today's date</p>
                                                     <FormMessage />
                                                 </FormItem>
                                             )}

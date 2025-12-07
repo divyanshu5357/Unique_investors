@@ -34,7 +34,6 @@ import {
     TrendingUp,
     History,
     Eye,
-    Printer,
     Lock,
     Zap,
     CalendarDays,
@@ -53,7 +52,6 @@ interface RoleBasedPlotDetailDrawerProps {
     onAddPayment?: (plot: Plot) => void;
     onCancel?: (plotId: string) => void;
     onConvertToSold?: (plot: Plot) => void;
-    onPrint?: (plot: Plot) => void;
 }
 
 const statusConfig = {
@@ -89,7 +87,6 @@ export function RoleBasedPlotDetailDrawer({
     onAddPayment,
     onCancel,
     onConvertToSold,
-    onPrint,
 }: RoleBasedPlotDetailDrawerProps) {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -588,18 +585,10 @@ export function RoleBasedPlotDetailDrawer({
                     {/* Sticky Action Bar */}
                     <div className="sticky bottom-0 z-10 border-t bg-background p-6 space-y-3">
                         <div className="flex gap-2 flex-wrap">
-                            {/* Broker Actions - View & Print Only */}
+                            {/* Broker Actions - View Only */}
                             {isReadOnly && (
                                 <>
-                                    <Button 
-                                        size="sm" 
-                                        variant="outline"
-                                        onClick={() => onPrint?.(plot)}
-                                        className="gap-2"
-                                    >
-                                        <Printer className="h-4 w-4" />
-                                        Print
-                                    </Button>
+                                    {/* Print button removed - available on card view */}
                                 </>
                             )}
 
@@ -668,15 +657,7 @@ export function RoleBasedPlotDetailDrawer({
                                     )}
 
                                     {plot.status !== 'available' && (
-                                        <Button 
-                                            size="sm" 
-                                            variant="outline"
-                                            onClick={() => onPrint?.(plot)}
-                                            className="gap-2"
-                                        >
-                                            <Printer className="h-4 w-4" />
-                                            Print
-                                        </Button>
+                                        <>{/* Print button removed - available on card view */}</>
                                     )}
                                 </>
                             )}

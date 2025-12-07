@@ -27,7 +27,6 @@ import {
     Clock,
     AlertCircle,
     Download,
-    Printer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -59,7 +58,6 @@ interface PaymentInstallmentDrawerProps {
     paymentHistory?: PaymentRecord[];
     userRole: 'admin' | 'broker';
     onDownloadReceipt?: (installmentId: string) => void;
-    onPrint?: (plot: Plot) => void;
 }
 
 export function PaymentInstallmentDrawer({
@@ -70,7 +68,6 @@ export function PaymentInstallmentDrawer({
     paymentHistory = [],
     userRole,
     onDownloadReceipt,
-    onPrint,
 }: PaymentInstallmentDrawerProps) {
     if (!plot) return null;
 
@@ -432,15 +429,6 @@ export function PaymentInstallmentDrawer({
                 {/* Sticky Action Bar */}
                 <div className="sticky bottom-0 z-10 border-t bg-background p-6 space-y-3">
                     <div className="flex gap-2 flex-wrap">
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => onPrint?.(plot)}
-                            className="flex-1 gap-2"
-                        >
-                            <Printer className="h-4 w-4" />
-                            Print Statement
-                        </Button>
                         <Button
                             size="sm"
                             variant="outline"

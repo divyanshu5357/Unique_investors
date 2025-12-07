@@ -324,7 +324,6 @@ export function PlotDetailDrawersSampleIntegration({
                 onAddPayment={handleAddPayment}
                 onCancel={handleCancelBooking}
                 onConvertToSold={handleConvertToSold}
-                onPrint={handlePrint}
             />
 
             {/* Payment Installment Drawer */}
@@ -341,7 +340,6 @@ export function PlotDetailDrawersSampleIntegration({
                     console.log('Download receipt for:', installmentId);
                     // Implement receipt download logic
                 }}
-                onPrint={handlePrint}
             />
         </div>
     );

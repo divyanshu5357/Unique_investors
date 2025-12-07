@@ -8,10 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { addPaymentToPlot } from '@/lib/actions';
 import { addPaymentSchema } from '@/lib/schema';
-import { Loader2, IndianRupee, Calendar } from 'lucide-react';
+import { Loader2, IndianRupee, Calendar, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface BookedPlot {
@@ -41,9 +42,16 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
             plotId: plot.id,
             amountReceived: '' as any,
             paymentDate: new Date().toISOString().split('T')[0],
+            paymentMethod: '',
+            transactionId: '',
             notes: '',
         },
     });
+
+    // Watch the amount to validate against remaining balance
+    const amountReceived = form.watch('amountReceived');
+    const isAmountExceedingBalance = amountReceived && plot.remaining_amount && 
+        Number(amountReceived) > plot.remaining_amount;
 
     const handleSubmit = async (values: z.infer<typeof addPaymentSchema>) => {
         setIsSubmitting(true);
@@ -142,6 +150,56 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
                                             />
                                         </div>
                                     </FormControl>
+                                    {isAmountExceedingBalance && (
+                                        <div className="flex items-center gap-2 mt-2 text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                                            <AlertCircle className="h-4 w-4" />
+                                            <span>Amount cannot exceed remaining balance of {formatCurrency(plot.remaining_amount)}</span>
+                                        </div>
+                                    )}
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="paymentMethod"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Payment Method *</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select payment method" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                                            <SelectItem value="cash">Cash</SelectItem>
+                                            <SelectItem value="cheque">Cheque</SelectItem>
+                                            <SelectItem value="upi">UPI</SelectItem>
+                                            <SelectItem value="credit_card">Credit Card</SelectItem>
+                                            <SelectItem value="debit_card">Debit Card</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="transactionId"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Transaction ID / Reference *</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            type="text"
+                                            placeholder="e.g., TXN123456 or Cheque Number"
+                                            {...field}
+                                        />
+                                    </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
@@ -158,7 +216,8 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
                                             <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                             <Input
                                                 type="date"
-                                                className="pl-10"
+                                                className="pl-10 bg-muted cursor-not-allowed"
+                                                disabled
                                                 {...field}
                                             />
                                         </div>
@@ -206,7 +265,10 @@ export function AddPaymentDialog({ isOpen, onClose, plot, onSuccess }: AddPaymen
                             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={isSubmitting || !plot.total_plot_amount || plot.total_plot_amount <= 0}>
+                            <Button 
+                                type="submit" 
+                                disabled={isSubmitting || !plot.total_plot_amount || plot.total_plot_amount <= 0 || (isAmountExceedingBalance || false)}
+                            >
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Add Payment
                             </Button>

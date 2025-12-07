@@ -6,11 +6,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Loader2, Eye, Calendar, IndianRupee, Archive, TrendingUp, Home, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { Loader2, Eye, Calendar, IndianRupee, Archive, TrendingUp, Home, CheckCircle2, XCircle, RotateCcw, Grid3X3, List } from 'lucide-react';
 import { getBrokerPlotHistory } from '@/lib/actions';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
+import { ReceiptPrintWrapper } from '@/components/receipt';
+import type { PrintableReceiptProps } from '@/components/receipt';
 
 interface PlotHistoryRecord {
     id: string;
@@ -38,6 +40,9 @@ export default function BrokerPlotHistoryPage() {
     const [selectedPlot, setSelectedPlot] = useState<PlotHistoryRecord | null>(null);
     const [showDetailsDialog, setShowDetailsDialog] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
+    const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+    const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+    const [receiptProps, setReceiptProps] = useState<PrintableReceiptProps | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -63,6 +68,43 @@ export default function BrokerPlotHistoryPage() {
     const handleViewDetails = (plot: PlotHistoryRecord) => {
         setSelectedPlot(plot);
         setShowDetailsDialog(true);
+    };
+
+    const handlePrintReceipt = (plot: PlotHistoryRecord) => {
+        if (plot.status === 'booked' || plot.status === 'sold') {
+            const receipt: PrintableReceiptProps = {
+                plotType: plot.status,
+                paymentDetails: {
+                    id: plot.id,
+                    receiptNumber: `${1000 + parseInt(plot.plot_id || '1', 10)}`,
+                    date: new Date().toLocaleDateString('en-IN'),
+                    paymentMode: 'bank_transfer',
+                    transactionId: `TXN-${Date.now()}`,
+                },
+                buyerDetails: {
+                    name: plot.buyer_name || 'N/A',
+                    mobile: '+91 XXXX XXXX',
+                    address: 'Property Address',
+                },
+                projectDetails: {
+                    projectName: plot.project_name,
+                    plotNumber: plot.plot_number.toString(),
+                    block: 'N/A',
+                    area: plot.plot_size_gaj || 0,
+                    facing: 'N/A',
+                    dimension: `${plot.plot_size_gaj} Gaj`,
+                },
+                financialDetails: {
+                    totalAmount: plot.total_amount || 0,
+                    bookingAmount: (plot.total_amount || 0) * 0.2,
+                    totalPaidTillDate: (plot.total_amount || 0) * ((plot.paid_percentage || 0) / 100),
+                    outstandingBalance: (plot.total_amount || 0) - ((plot.total_amount || 0) * ((plot.paid_percentage || 0) / 100)),
+                },
+                salesExecutive: plot.broker_name || 'Broker',
+            };
+            setReceiptProps(receipt);
+            setIsReceiptModalOpen(true);
+        }
     };
 
     const getStatusBadge = (status: string) => {
@@ -167,8 +209,33 @@ export default function BrokerPlotHistoryPage() {
             {/* Plot History Table */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Plot Transaction History</CardTitle>
-                    <CardDescription>Immutable audit trail - Read-only records with no edits or deletions</CardDescription>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle>Plot Transaction History</CardTitle>
+                            <CardDescription>Immutable audit trail - Read-only records with no edits or deletions</CardDescription>
+                        </div>
+                        {/* View Mode Toggle */}
+                        <div className="flex gap-2">
+                            <Button
+                                variant={viewMode === 'table' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setViewMode('table')}
+                                className="gap-2"
+                            >
+                                <List className="h-4 w-4" />
+                                Table
+                            </Button>
+                            <Button
+                                variant={viewMode === 'grid' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setViewMode('grid')}
+                                className="gap-2"
+                            >
+                                <Grid3X3 className="h-4 w-4" />
+                                Grid
+                            </Button>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
@@ -189,7 +256,7 @@ export default function BrokerPlotHistoryPage() {
                                 <div className="text-center text-muted-foreground h-40 flex items-center justify-center">
                                     <p>No records found</p>
                                 </div>
-                            ) : (
+                            ) : viewMode === 'table' ? (
                                 <div className="overflow-x-auto">
                                     <table className="w-full">
                                         <thead>
@@ -249,6 +316,93 @@ export default function BrokerPlotHistoryPage() {
                                             ))}
                                         </tbody>
                                     </table>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {filteredPlots.map(plot => (
+                                        <Card key={plot.id} className="hover:shadow-xl transition-all duration-300 cursor-pointer border-0 overflow-hidden">
+                                            {/* Gradient Header */}
+                                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <div className="flex-1">
+                                                        <CardTitle className="text-xl font-bold text-gray-900">Plot #{plot.plot_number}</CardTitle>
+                                                        <CardDescription className="text-sm font-medium text-gray-600">{plot.project_name}</CardDescription>
+                                                    </div>
+                                                    <Badge className={`${plot.status === 'booked' ? 'bg-blue-100 text-blue-800' : plot.status === 'sold' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'} text-xs font-semibold px-3 py-1`}>
+                                                        {plot.status === 'booked' && '🟡 Booked'}
+                                                        {plot.status === 'sold' && '🟢 Sold'}
+                                                        {plot.status === 'cancelled' && '🔴 Cancelled'}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+
+                                            <CardContent className="p-5 space-y-4">
+                                                {/* Plot Details Grid */}
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="bg-gray-50 rounded-lg p-3">
+                                                        <p className="text-xs font-semibold text-gray-500 uppercase">Size</p>
+                                                        <p className="text-lg font-bold text-gray-900 mt-1">{plot.plot_size_gaj} Gaj</p>
+                                                    </div>
+                                                    <div className="bg-gray-50 rounded-lg p-3">
+                                                        <p className="text-xs font-semibold text-gray-500 uppercase">Status</p>
+                                                        <p className="text-sm font-bold text-gray-900 mt-1 capitalize">{plot.status}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Price Section */}
+                                                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
+                                                    <p className="text-xs font-semibold text-green-700 uppercase">Amount</p>
+                                                    <p className="text-2xl font-bold text-green-900 mt-1">₹{(plot.total_amount || 0).toLocaleString('en-IN')}</p>
+                                                </div>
+
+                                                {/* Payment Progress */}
+                                                {plot.status === 'booked' && (
+                                                    <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-100">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <p className="text-xs font-semibold text-yellow-700 uppercase">Payment Progress</p>
+                                                            <span className="text-sm font-bold text-yellow-900">{plot.paid_percentage || 0}%</span>
+                                                        </div>
+                                                        <div className="w-full h-2.5 bg-yellow-200 rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full transition-all duration-500"
+                                                                style={{ width: `${plot.paid_percentage || 0}%` }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Buyer Info */}
+                                                {plot.buyer_name && (
+                                                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                                                        <p className="text-xs font-semibold text-blue-700 uppercase">Buyer</p>
+                                                        <p className="text-sm font-bold text-blue-900 mt-1">{plot.buyer_name}</p>
+                                                    </div>
+                                                )}
+
+                                                {/* Action Buttons */}
+                                                <div className="flex gap-2 pt-2">
+                                                    <Button
+                                                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                                                        size="sm"
+                                                        onClick={() => handleViewDetails(plot)}
+                                                    >
+                                                        <Eye className="h-4 w-4 mr-2" />
+                                                        Details
+                                                    </Button>
+                                                    {(plot.status === 'booked' || plot.status === 'sold') && (
+                                                        <Button
+                                                            size="sm"
+                                                            className="bg-green-600 hover:bg-green-700 text-white"
+                                                            onClick={() => handlePrintReceipt(plot)}
+                                                            title="Print Receipt"
+                                                        >
+                                                            🖨️ Print
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
                                 </div>
                             )}
                         </TabsContent>
@@ -466,6 +620,35 @@ export default function BrokerPlotHistoryPage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Receipt Print Modal */}
+            {isReceiptModalOpen && receiptProps && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div className="bg-white rounded-lg max-w-4xl w-full my-8 max-h-[90vh] overflow-y-auto">
+                        <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
+                            <h2 className="text-xl font-bold">Receipt - Plot #{receiptProps.projectDetails.plotNumber}</h2>
+                            <button
+                                onClick={() => {
+                                    setIsReceiptModalOpen(false);
+                                    setReceiptProps(null);
+                                }}
+                                className="text-gray-500 hover:text-gray-700 font-bold text-xl"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="p-8">
+                            <ReceiptPrintWrapper
+                                {...receiptProps}
+                                onClose={() => {
+                                    setIsReceiptModalOpen(false);
+                                    setReceiptProps(null);
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
